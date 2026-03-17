@@ -4,6 +4,7 @@
     let isLogScale = false;
     let currentTab = 'view-profile';
     let globalBEData = []; // Store BE table results for export
+    let sensitivityRowsCache = [];
     let simRefFileCount = 0;
     let simTestFileCount = 0;
     let obsFileCount = 0;
@@ -252,6 +253,13 @@
     const bePairingPanel = document.getElementById('bePairingPanel');
     const bePairingSummary = document.getElementById('bePairingSummary');
     const bePairingDetail = document.getElementById('bePairingDetail');
+    const sensitivityEndpointSelect = document.getElementById('sensitivityEndpointSelect');
+    const sensitivityBaselineSelect = document.getElementById('sensitivityBaselineSelect');
+    const sensitivityContent = document.getElementById('sensitivityContent');
+    const sensitivitySummary = document.getElementById('sensitivitySummary');
+    const sensitivityPlot = document.getElementById('sensitivityPlot');
+    const sensitivityTableBody = document.getElementById('sensitivityTableBody');
+    const sensitivityEmptyMsg = document.getElementById('sensitivityEmptyMsg');
 
     // Display / Export
     const emptyState = document.getElementById('emptyState');
@@ -353,6 +361,11 @@
         'view-stats': {
             csvLabel: 'Export Stats Data',
             canExportPNG: () => false,
+            canExportCSV: () => !!globalTrialsData
+        },
+        'view-sensitivity': {
+            csvLabel: 'Export Sensitivity Data',
+            canExportPNG: () => !!globalTrialsData,
             canExportCSV: () => !!globalTrialsData
         }
     };
@@ -768,6 +781,10 @@
                     simSubjectPrefix: mapSimSubjectPrefix ? mapSimSubjectPrefix.value : columnMappingDefaults.simSubjectPrefix,
                     obsTimeContains: mapObsTimeContains ? mapObsTimeContains.value : columnMappingDefaults.obsTimeContains,
                     obsConcContains: mapObsConcContains ? mapObsConcContains.value : columnMappingDefaults.obsConcContains
+                },
+                sensitivity: {
+                    endpoint: sensitivityEndpointSelect ? sensitivityEndpointSelect.value : 'Cmax',
+                    baseline: sensitivityBaselineSelect ? sensitivityBaselineSelect.value : 'auto'
                 }
             };
             localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
@@ -790,6 +807,15 @@
                 if (mapSimSubjectPrefix) mapSimSubjectPrefix.value = s.mapping.simSubjectPrefix || columnMappingDefaults.simSubjectPrefix;
                 if (mapObsTimeContains) mapObsTimeContains.value = s.mapping.obsTimeContains || columnMappingDefaults.obsTimeContains;
                 if (mapObsConcContains) mapObsConcContains.value = s.mapping.obsConcContains || columnMappingDefaults.obsConcContains;
+            }
+            if (s.sensitivity) {
+                const allowedEndpoints = ['Cmax', 'AUCt', 'AUCinf', 'Tmax', 'Fa', 'Fdp', 'F'];
+                if (sensitivityEndpointSelect && allowedEndpoints.includes(s.sensitivity.endpoint)) {
+                    sensitivityEndpointSelect.value = s.sensitivity.endpoint;
+                }
+                if (sensitivityBaselineSelect && typeof s.sensitivity.baseline === 'string') {
+                    sensitivityBaselineSelect.dataset.pendingValue = s.sensitivity.baseline;
+                }
             }
             if (s.toggles) {
                 if (showContour100) showContour100.checked = !!s.toggles.showContour100;
@@ -1007,12 +1033,19 @@
         if (targetConcUnitSelect) targetConcUnitSelect.value = 'ug/ml';
         if (inputXMax) inputXMax.value = '';
         if (inputYMax) inputYMax.value = '';
+        if (sensitivityEndpointSelect) sensitivityEndpointSelect.value = 'Cmax';
+        if (sensitivityBaselineSelect) {
+            sensitivityBaselineSelect.innerHTML = '<option value="auto">Auto (first active Reference / first active trial)</option>';
+            sensitivityBaselineSelect.value = 'auto';
+        }
+        sensitivityRowsCache = [];
         setScaleButtonStyles(btnScaleLinear, btnScaleLog);
 
         // 4. Purge Plotly Memory
         try {
             Plotly.purge('plotlyChart');
             ['bePlotCmax', 'bePlotAUCinf', 'bePlotAUCt', 'bePlotConclusion'].forEach(id => Plotly.purge(id));
+            Plotly.purge('sensitivityPlot');
             Array.from(document.querySelectorAll('[id^="plotlyBox_"]')).forEach(el => Plotly.purge(el.id));
         } catch(e) {}
 
@@ -1023,6 +1056,11 @@
         document.getElementById('statsTable').parentElement.classList.add('hidden');
         document.getElementById('boxPlotsGrid').style.display = 'none';
         document.getElementById('beContent').classList.add('hidden');
+        if (sensitivityContent) sensitivityContent.classList.add('hidden');
+        if (sensitivityTableBody) sensitivityTableBody.innerHTML = '';
+        if (sensitivitySummary) sensitivitySummary.textContent = '';
+        if (sensitivityPlot) sensitivityPlot.innerHTML = '';
+        if (sensitivityEmptyMsg) sensitivityEmptyMsg.classList.remove('hidden');
         setBoxPlotLoadingState(false);
 
         // 6. Restore Empty States
@@ -1057,6 +1095,7 @@
         if(currentTab === 'view-profile' && (globalTrialsData || globalObsData.length > 0)) updatePlot(); 
         if(currentTab === 'view-params' && globalTrialsData) updateBoxPlots();
         if(currentTab === 'view-be' && globalTrialsData) updateBEView();
+        if(currentTab === 'view-sensitivity' && globalTrialsData) updateSensitivityView();
         saveSessionState();
     };
 
@@ -1076,6 +1115,14 @@
     addListener(mapSimSubjectPrefix, 'input', saveSessionState);
     addListener(mapObsTimeContains, 'input', saveSessionState);
     addListener(mapObsConcContains, 'input', saveSessionState);
+    addListener(sensitivityEndpointSelect, 'change', () => {
+        updateSensitivityView();
+        saveSessionState();
+    });
+    addListener(sensitivityBaselineSelect, 'change', () => {
+        updateSensitivityView();
+        saveSessionState();
+    });
     addListener(boxShowOutliers, 'change', triggerVisualUpdate);
     addListener(boxShowMean, 'change', triggerVisualUpdate);
     if (btnBoxResultsOnly) {
@@ -1097,6 +1144,7 @@
         { id: 'bePlotAUCt', name: 'Bioequivalence_AUCt' },
         { id: 'bePlotConclusion', name: 'Bioequivalence_Conclusion' }
     ];
+    const sensitivityPlotTarget = { id: 'sensitivityPlot', name: 'Sensitivity_Analysis' };
 
     function getRenderablePlotTargets(targets) {
         return targets.filter(plot => {
@@ -1190,6 +1238,11 @@
                     }
                 }, idx * 1000); 
             });
+        } else if (currentTab === 'view-sensitivity') {
+            const sensPlot = getRenderablePlotElement(sensitivityPlotTarget.id);
+            if (sensPlot) {
+                Plotly.downloadImage(sensitivityPlotTarget.id, { format: 'png', width: 1200, height: 720, filename: `PopPK_${sensitivityPlotTarget.name}` });
+            }
         }
     });
 
@@ -1202,6 +1255,8 @@
             exportParamsToCSV();
         } else if (currentTab === 'view-be') {
             exportBEDataToCSV();
+        } else if (currentTab === 'view-sensitivity') {
+            exportSensitivityToCSV();
         } else {
             exportDataToCSV();
         }
@@ -1221,6 +1276,7 @@
                 if (globalTrialsData) exportDataToCSV('GastroPlus_Aggregated_Profiles_Bundle.csv');
                 if (globalTrialsData) exportStatsToCSV('GastroPlus_Summary_Stats_Bundle.csv');
                 if (globalTrialsData) exportParamsToCSV('GastroPlus_PK_Parameters_Bundle.csv');
+                if (globalTrialsData) exportSensitivityToCSV('GastroPlus_Sensitivity_Analysis_Bundle.csv');
                 if (globalBEData.length > 0) exportBEDataToCSV('GastroPlus_BE_Results_Bundle.csv');
                 showStatusToast('Bundle library unavailable. Exported separate CSV files instead.', 'warn');
                 if (txtExportBundle) txtExportBundle.textContent = originalBundleText;
@@ -1236,9 +1292,11 @@
                     const profileCSV = getProfileCSVContent();
                     const statsCSV = getStatsCSVContent();
                     const paramsCSV = getParamsCSVContent();
+                    const sensitivityCSV = getSensitivityCSVContent();
                     if (profileCSV) zip.file('GastroPlus_Aggregated_Profiles.csv', profileCSV);
                     if (statsCSV) zip.file('GastroPlus_Summary_Stats.csv', statsCSV);
                     if (paramsCSV) zip.file('GastroPlus_PK_Parameters.csv', paramsCSV);
+                    if (sensitivityCSV) zip.file('GastroPlus_Sensitivity_Analysis.csv', sensitivityCSV);
                 }
                 if (globalBEData.length > 0) {
                     const beCSV = getBECSVContent();
@@ -1253,6 +1311,7 @@
                 const plotTargets = [
                     { id: 'plotlyChart', name: 'Profile_Conc_Time' },
                     ...bePlotTargets,
+                    sensitivityPlotTarget,
                     ...dynamicBoxPlots
                 ];
 
@@ -1338,6 +1397,7 @@
         if(currentTab === 'view-profile') updatePlot();
         if(currentTab === 'view-params') updateBoxPlots();
         if(currentTab === 'view-be') updateBEView();
+        if(currentTab === 'view-sensitivity') updateSensitivityView();
         updateStatsTable();
         updateRunStatBar();
     }
@@ -3312,6 +3372,189 @@
         }
     }
 
+    function buildSensitivityDataset(paramTypeInput) {
+        const paramType = String(paramTypeInput || 'Cmax');
+        if (!globalTrialsData || !Array.isArray(globalTrialsData.trials)) {
+            return { rows: [], reason: 'Upload simulation files to run sensitivity analysis.' };
+        }
+
+        const activeCandidates = globalTrialsData.trials
+            .map((trial, index) => ({ trial, index }))
+            .filter(({ trial }) => !!trial.active && trial.rawParams && trial.rawParams.length > 0);
+
+        const populated = activeCandidates.map(({ trial, index }) => {
+            const values = extractParamData(trial, paramType);
+            if (!values.length) return null;
+            const mean = values.reduce((a, b) => a + b, 0) / values.length;
+            return {
+                index,
+                trial,
+                trialLabel: getTrialLabel(trial),
+                trialNumber: trial.trialNumber,
+                formulationType: trial.formulationType === 'reference' ? 'reference' : 'test',
+                mean,
+                n: values.length
+            };
+        }).filter(Boolean);
+
+        if (sensitivityBaselineSelect) {
+            const desiredValue = sensitivityBaselineSelect.dataset.pendingValue || sensitivityBaselineSelect.value || 'auto';
+            sensitivityBaselineSelect.innerHTML = '<option value="auto">Auto (first active Reference / first active trial)</option>';
+            populated.forEach(row => {
+                const opt = document.createElement('option');
+                opt.value = String(row.index);
+                opt.textContent = `${row.trialLabel} (${row.formulationType === 'reference' ? 'REF' : 'TEST'})`;
+                sensitivityBaselineSelect.appendChild(opt);
+            });
+            const hasDesired = Array.from(sensitivityBaselineSelect.options).some(o => o.value === desiredValue);
+            sensitivityBaselineSelect.value = hasDesired ? desiredValue : 'auto';
+            delete sensitivityBaselineSelect.dataset.pendingValue;
+        }
+
+        if (populated.length < 2) {
+            return { rows: [], reason: `Need at least two active trials with valid ${paramType} values.` };
+        }
+
+        const selectedBaseline = sensitivityBaselineSelect && sensitivityBaselineSelect.value !== 'auto'
+            ? populated.find(r => String(r.index) === sensitivityBaselineSelect.value)
+            : null;
+        const baseline = selectedBaseline || populated.find(r => r.formulationType === 'reference') || populated[0];
+        const baseMean = baseline.mean;
+
+        const rows = populated.map(row => {
+            const deltaPct = (Number.isFinite(baseMean) && baseMean !== 0)
+                ? ((row.mean - baseMean) / baseMean) * 100
+                : null;
+            return {
+                ...row,
+                isBaseline: row.index === baseline.index,
+                deltaPct,
+                absDeltaPct: Number.isFinite(deltaPct) ? Math.abs(deltaPct) : null
+            };
+        });
+
+        rows.sort((a, b) => {
+            if (a.isBaseline) return -1;
+            if (b.isBaseline) return 1;
+            const av = Number.isFinite(a.absDeltaPct) ? a.absDeltaPct : -1;
+            const bv = Number.isFinite(b.absDeltaPct) ? b.absDeltaPct : -1;
+            return bv - av;
+        });
+
+        return {
+            rows,
+            baseline,
+            endpoint: paramType,
+            reason: null
+        };
+    }
+
+    function updateSensitivityView() {
+        if (!sensitivityContent || !sensitivityEmptyMsg || !sensitivityPlot || !sensitivityTableBody || !sensitivitySummary) return;
+
+        const endpoint = sensitivityEndpointSelect ? sensitivityEndpointSelect.value : 'Cmax';
+        const data = buildSensitivityDataset(endpoint);
+        sensitivityRowsCache = data.rows || [];
+
+        if (!data.rows || data.rows.length < 2) {
+            sensitivityContent.classList.add('hidden');
+            sensitivityEmptyMsg.classList.remove('hidden');
+            const msg = sensitivityEmptyMsg.querySelector('p');
+            if (msg) msg.textContent = data.reason || 'Sensitivity analysis needs at least two active trials with valid endpoint values.';
+            sensitivityTableBody.innerHTML = '';
+            sensitivitySummary.textContent = '';
+            try { Plotly.purge('sensitivityPlot'); } catch (e) {}
+            return;
+        }
+
+        sensitivityContent.classList.remove('hidden');
+        sensitivityEmptyMsg.classList.add('hidden');
+
+        const baseline = data.baseline;
+        sensitivitySummary.textContent = `Endpoint: ${data.endpoint} • Baseline: ${baseline.trialLabel} • Baseline mean: ${baseline.mean.toFixed(4)} • Active comparable trials: ${data.rows.length}`;
+
+        sensitivityTableBody.innerHTML = data.rows.map(row => {
+            const delta = Number.isFinite(row.deltaPct) ? row.deltaPct.toFixed(2) : '-';
+            const absDelta = Number.isFinite(row.absDeltaPct) ? row.absDeltaPct.toFixed(2) : '-';
+            const deltaColor = row.isBaseline ? 'var(--accent)' : (row.deltaPct >= 0 ? '#4ade80' : '#f87171');
+            const trialType = row.formulationType === 'reference' ? 'REF' : 'TEST';
+            return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td class="px-4 py-2 text-sm font-semibold" style="color:var(--text-primary)">
+                        ${escapeHtml(row.trialLabel)}${row.isBaseline ? ' <span class="text-[10px]" style="color:var(--accent)">(Baseline)</span>' : ''}
+                    </td>
+                    <td class="px-4 py-2 text-xs" style="color:var(--text-secondary)">${trialType}</td>
+                    <td class="px-4 py-2 text-sm text-right" style="color:var(--text-primary);font-variant-numeric:tabular-nums">${row.mean.toFixed(4)}</td>
+                    <td class="px-4 py-2 text-sm text-right" style="color:${deltaColor};font-weight:${row.isBaseline ? '700' : '600'};font-variant-numeric:tabular-nums">${delta}</td>
+                    <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${absDelta}</td>
+                </tr>
+            `;
+        }).join('');
+
+        const plotRows = data.rows.filter(r => Number.isFinite(r.deltaPct));
+        if (!plotRows.length) {
+            sensitivityPlot.innerHTML = '<div class="h-full flex items-center justify-center text-sm" style="color: var(--text-tertiary);">No plottable values</div>';
+            return;
+        }
+
+        const plotTheme = getPlotTheme();
+        const trace = {
+            type: 'bar',
+            orientation: 'h',
+            y: plotRows.map(r => r.trialLabel),
+            x: plotRows.map(r => r.deltaPct),
+            marker: {
+                color: plotRows.map(r => {
+                    if (r.isBaseline) return '#d4956a';
+                    return r.deltaPct >= 0 ? '#22c55e' : '#ef4444';
+                }),
+                line: {
+                    color: plotRows.map(r => r.isBaseline ? '#d4956a' : 'rgba(255,255,255,0.25)'),
+                    width: 1
+                }
+            },
+            text: plotRows.map(r => Number.isFinite(r.deltaPct) ? `${r.deltaPct.toFixed(2)}%` : ''),
+            textposition: 'auto',
+            hovertemplate: '%{y}<br>Delta: %{x:.2f}%<extra></extra>'
+        };
+
+        const maxAbs = plotRows.reduce((m, r) => Math.max(m, Math.abs(r.deltaPct)), 0);
+        const pad = Math.max(6, maxAbs * 0.15);
+        const bound = Math.max(8, maxAbs + pad);
+
+        const layout = {
+            margin: { t: 12, r: 18, b: 46, l: 170 },
+            plot_bgcolor: plotTheme.bg,
+            paper_bgcolor: plotTheme.paper,
+            font: { family: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', color: plotTheme.font },
+            xaxis: {
+                title: { text: `Delta vs baseline (${data.endpoint}) [%]`, font: { size: 11, color: plotTheme.subtitle } },
+                range: [-bound, bound],
+                gridcolor: plotTheme.grid,
+                zeroline: true,
+                zerolinecolor: plotTheme.tick,
+                tickfont: { color: plotTheme.font }
+            },
+            yaxis: {
+                automargin: true,
+                tickfont: { color: plotTheme.font }
+            },
+            shapes: [{
+                type: 'line',
+                xref: 'x',
+                yref: 'paper',
+                x0: 0,
+                x1: 0,
+                y0: 0,
+                y1: 1,
+                line: { color: plotTheme.tick, width: 1.2, dash: 'dot' }
+            }],
+            showlegend: false
+        };
+
+        Plotly.react('sensitivityPlot', [trace], layout, { responsive: true, displaylogo: false });
+    }
+
     // -- Rendering Logic: Summary Stats Table --
     function updateStatsTable() {
         if (!globalTrialsData) return;
@@ -3535,6 +3778,33 @@
 
     function exportBEDataToCSV(filename = "GastroPlus_BE_Results.csv") {
         const csvContent = getBECSVContent();
+        if (!csvContent) return;
+        downloadCSV(csvContent, filename);
+    }
+
+    function getSensitivityCSVContent() {
+        if (!globalTrialsData) return null;
+        const endpoint = sensitivityEndpointSelect ? sensitivityEndpointSelect.value : 'Cmax';
+        const data = buildSensitivityDataset(endpoint);
+        if (!data.rows || data.rows.length < 2) return null;
+
+        const header = ['Trial_Number', 'Trial_Label', 'Type', 'Endpoint', 'Mean', 'Baseline_Trial', 'Baseline_Mean', 'Delta_Percent', 'Absolute_Delta_Percent'];
+        const rows = data.rows.map(r => [
+            r.trialNumber,
+            r.trialLabel,
+            r.formulationType,
+            data.endpoint,
+            r.mean,
+            data.baseline ? data.baseline.trialLabel : '',
+            data.baseline ? data.baseline.mean : '',
+            Number.isFinite(r.deltaPct) ? r.deltaPct : '',
+            Number.isFinite(r.absDeltaPct) ? r.absDeltaPct : ''
+        ]);
+        return `${buildExportMetadata('Sensitivity Analysis')}\n${toCSVRow(header)}\n${rows.map(toCSVRow).join('\n')}${rows.length ? '\n' : ''}`;
+    }
+
+    function exportSensitivityToCSV(filename = "GastroPlus_Sensitivity_Analysis.csv") {
+        const csvContent = getSensitivityCSVContent();
         if (!csvContent) return;
         downloadCSV(csvContent, filename);
     }

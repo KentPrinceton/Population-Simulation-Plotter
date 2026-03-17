@@ -253,6 +253,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                     Summary Stats
                 </button>
+                <button data-target="view-sensitivity" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] focus:outline-none flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><polyline points="6 15 10 11 13 14 18 8"/><circle cx="10" cy="11" r="1"/><circle cx="13" cy="14" r="1"/><circle cx="18" cy="8" r="1"/></svg>
+                    Sensitivity
+                </button>
             </nav>
         </div>
 
@@ -574,6 +578,59 @@
             </div>
             <div id="statsEmptyMsg" class="absolute inset-0 flex items-center justify-center hidden pointer-events-none mt-10">
                 <p class="font-medium text-sm" style="color: var(--text-secondary);">No 'Summary Stats' sheet found in uploaded files.</p>
+            </div>
+        </div>
+
+        <!-- View 6: Sensitivity Analysis -->
+        <div id="view-sensitivity" class="flex-1 p-4 w-full h-full overflow-auto view-container view-hidden relative flex flex-col gap-3" style="background: var(--bg-base);">
+            <div class="p-3 rounded-lg shrink-0 flex flex-wrap items-center gap-3" style="border: 1px solid var(--border-subtle); background: var(--bg-surface);">
+                <div>
+                    <p class="text-[10px] uppercase tracking-widest font-bold" style="color: var(--text-tertiary);">Cross-Trial Sensitivity</p>
+                    <p class="text-sm font-semibold mt-0.5" style="color: var(--text-primary);">Endpoint change relative to a baseline trial.</p>
+                </div>
+                <div class="flex items-center gap-2 ml-auto flex-wrap">
+                    <label class="text-xs font-semibold" style="color: var(--text-secondary);">Endpoint:</label>
+                    <select id="sensitivityEndpointSelect" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 140px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);">
+                        <option value="Cmax">Cmax</option>
+                        <option value="AUCt">AUCt</option>
+                        <option value="AUCinf">AUCinf</option>
+                        <option value="Tmax">Tmax</option>
+                        <option value="Fa">Fa</option>
+                        <option value="Fdp">Fdp</option>
+                        <option value="F">F</option>
+                    </select>
+                    <label class="text-xs font-semibold" style="color: var(--text-secondary);">Baseline:</label>
+                    <select id="sensitivityBaselineSelect" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 230px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);">
+                        <option value="auto">Auto (first active Reference / first active trial)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="sensitivityContent" class="hidden flex-1 flex flex-col gap-3 min-h-[520px]">
+                <div class="rounded-lg p-2" style="background: var(--bg-surface); border: 1px solid var(--border-subtle);">
+                    <p id="sensitivitySummary" class="text-xs px-1 pb-2" style="color: var(--text-secondary);"></p>
+                    <div id="sensitivityPlot" class="w-full h-[340px]"></div>
+                </div>
+                <div class="rounded-lg overflow-auto table-wrap-sticky" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); max-height: 280px;">
+                    <table class="min-w-full divide-y table-zebra" style="border-color: var(--border-subtle);">
+                        <thead class="sticky top-0 z-10">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Trial</th>
+                                <th class="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Type</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">Mean</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">Δ vs Baseline (%)</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">|Δ| (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sensitivityTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="sensitivityEmptyMsg" class="absolute inset-0 flex items-center justify-center pointer-events-none mt-20">
+                <div class="px-6 py-4 rounded-lg text-center" style="background: var(--bg-surface); border: 1px solid var(--border-default);">
+                    <p class="font-medium text-sm" style="color: var(--text-secondary);">Sensitivity analysis needs at least two active trials with valid endpoint values.</p>
+                </div>
             </div>
         </div>
 
