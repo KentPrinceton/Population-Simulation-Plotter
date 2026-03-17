@@ -809,9 +809,8 @@
                 if (mapObsConcContains) mapObsConcContains.value = s.mapping.obsConcContains || columnMappingDefaults.obsConcContains;
             }
             if (s.sensitivity) {
-                const allowedEndpoints = ['Cmax', 'AUCt', 'AUCinf', 'Tmax', 'Fa', 'Fdp', 'F'];
-                if (sensitivityEndpointSelect && allowedEndpoints.includes(s.sensitivity.endpoint)) {
-                    sensitivityEndpointSelect.value = s.sensitivity.endpoint;
+                if (sensitivityEndpointSelect && s.sensitivity.endpoint) {
+                    sensitivityEndpointSelect.dataset.pendingEndpoint = s.sensitivity.endpoint;
                 }
                 if (sensitivityBaselineSelect && typeof s.sensitivity.baseline === 'string') {
                     sensitivityBaselineSelect.dataset.pendingValue = s.sensitivity.baseline;
@@ -2079,14 +2078,22 @@
 
     function canonicalParamNameFromKey(key) {
         const n = normalizeParamToken(key);
-        if (!n) return null;
-        if (n === 'cmax' || n.startsWith('cmax') || n.includes('maxconcentration') || n.includes('peakconcentration')) return 'Cmax';
-        if (n.includes('auc0t') || n === 'auct' || n.startsWith('auct') || n.includes('auclast') || n.includes('auc0last') || n.includes('auctlast')) return 'AUCt';
-        if (n.includes('aucinf') || n.includes('auc0inf') || n.includes('aucinfinity')) return 'AUCinf';
-        if (n === 'tmax' || n.startsWith('tmax') || n.includes('timetomax') || n.includes('timetopeak')) return 'Tmax';
-        if (n === 'fdp' || n.startsWith('fdp')) return 'Fdp';
-        if (n === 'fa' || n.startsWith('fa')) return 'Fa';
-        if (n === 'f' || n.includes('bioavailability')) return 'F';
+        const nk = normalizeKey(key);
+        if (!n && !nk) return null;
+
+        if (n === 'cmax' || n.startsWith('cmax') || n.includes('maxconcentration') || n.includes('peakconcentration') || nk.includes('cmax')) return 'Cmax';
+
+        const aucTAliasesNK = ['auc(0-t)', 'auc 0-t', 'auc0-t', 'auct', 'auc(last)', 'auclast', 'auc last', 'auc0-last', 'auc(0-last)'];
+        if (aucTAliasesNK.some(a => nk.includes(a)) || n.includes('auc0t') || n === 'auct' || n.startsWith('auct') || n.includes('auclast') || n.includes('auc0last') || n.includes('auctlast')) return 'AUCt';
+
+        const aucInfAliasesNK = ['aucinf', 'auc inf', 'auc(inf)', 'auc0-inf', 'auc(0-inf)', 'auc infinity'];
+        if (aucInfAliasesNK.some(a => nk.includes(a)) || n.includes('aucinf') || n.includes('auc0inf') || n.includes('aucinfinity')) return 'AUCinf';
+
+        if (n === 'tmax' || n.startsWith('tmax') || n.includes('timetomax') || n.includes('timetopeak') || nk.includes('tmax')) return 'Tmax';
+
+        if (n === 'fdp' || nk === 'fdp' || nk.startsWith('fdp ') || nk.startsWith('fdp(') || nk.startsWith('fdp%') || nk.startsWith('fdp[') || nk.includes('fraction dissolved') || nk.includes('% dissolved')) return 'Fdp';
+        if (n === 'fa' || nk === 'fa' || nk.startsWith('fa ') || nk.startsWith('fa(') || nk.startsWith('fa%') || nk.startsWith('fa[') || nk.includes('fraction absorbed') || nk.includes('% absorbed')) return 'Fa';
+        if (n === 'f' || nk === 'f' || nk.startsWith('f ') || nk.startsWith('f(') || nk.startsWith('f%') || nk.startsWith('f[') || nk.includes('bioavailability')) return 'F';
         return null;
     }
 
@@ -2111,7 +2118,7 @@
         }
 
         if (paramType === 'AUCt') {
-            const aucTAliases = ['auc(0-t)', 'auc 0-t', 'auc0-t', 'auct', 'auc(last)', 'auclast', 'auc last', 'auc0-last'];
+            const aucTAliases = ['auc(0-t)', 'auc 0-t', 'auc0-t', 'auct', 'auc(last)', 'auc(0-last)', 'auclast', 'auc last', 'auc0-last'];
             const found = normalized.find(x => aucTAliases.some(a => x.n.includes(a)));
             return found ? found.raw : null;
         }
@@ -2131,18 +2138,35 @@
         }
 
         if (paramType === 'Fa') {
-            const found = tokenized.find(x => x.t === 'fa' || x.t.startsWith('fa'));
-            return found ? found.raw : null;
+            const faStartAliases = ['fa ', 'fa(', 'fa%', 'fa['];
+            const found = normalized.find(x => x.n === 'fa' || faStartAliases.some(a => x.n.startsWith(a)) || x.n.includes('fraction absorbed') || x.n.includes('% absorbed'));
+            if (found) return found.raw;
+            const faFallback = tokenized.find(x => x.t === 'fa');
+            return faFallback ? faFallback.raw : null;
         }
 
         if (paramType === 'Fdp') {
-            const found = tokenized.find(x => x.t === 'fdp' || x.t.startsWith('fdp'));
-            return found ? found.raw : null;
+            const fdpStartAliases = ['fdp ', 'fdp(', 'fdp%', 'fdp['];
+            const found = normalized.find(x => x.n === 'fdp' || fdpStartAliases.some(a => x.n.startsWith(a)) || x.n.includes('fraction dissolved') || x.n.includes('% dissolved'));
+            if (found) return found.raw;
+            const fdpFallback = tokenized.find(x => x.t === 'fdp');
+            return fdpFallback ? fdpFallback.raw : null;
         }
 
         if (paramType === 'F') {
-            const found = tokenized.find(x => x.t === 'f' || x.t.includes('bioavailability'));
-            return found ? found.raw : null;
+            const bioFound = normalized.find(x => x.n.includes('bioavailability'));
+            if (bioFound) return bioFound.raw;
+            const fStartAliases = ['f ', 'f(', 'f%', 'f['];
+            const found = normalized.find(x => x.n === 'f' || fStartAliases.some(a => x.n.startsWith(a)));
+            if (found) return found.raw;
+            const fFallback = tokenized.find(x => x.t === 'f');
+            return fFallback ? fFallback.raw : null;
+        }
+
+        const fallbackToken = normalizeParamToken(paramType);
+        if (fallbackToken) {
+            const found = tokenized.find(x => x.t === fallbackToken);
+            if (found) return found.raw;
         }
 
         return null;
@@ -2214,20 +2238,21 @@
         return { pe, lower, upper };
     }
 
-    function extractParamDataWithDiagnostics(trial, paramType) {
+    function extractParamDataWithDiagnostics(trial, paramType, opts) {
         if (!trial || !trial.rawParams || trial.rawParams.length === 0) return { values: [], excluded: 0, keyFound: false };
         const keys = Object.keys(trial.rawParams[0]);
         const k = findParamKey(keys, paramType);
 
         if (!k) return { values: [], excluded: 0, keyFound: false };
 
+        const positiveOnly = opts && opts.positiveOnly;
         const values = [];
         let excluded = 0;
         trial.rawParams.forEach(row => {
             const v = parseNumericCell(row[k]);
             if (!Number.isFinite(v)) return;
-            if (v > 0) values.push(v);
-            else excluded += 1;
+            if (positiveOnly && v <= 0) { excluded += 1; return; }
+            values.push(v);
         });
 
         return { values, excluded, keyFound: true };
@@ -2301,7 +2326,7 @@
     function getVisibleBoxplotParams() {
         const params = getBoxplotParams();
         if (!boxResultsOnly) return params;
-        const resultTokens = new Set(['cmax', 'auct', 'aucinf', 'fa', 'f', 'fdp']);
+        const resultTokens = new Set(['cmax', 'auct', 'aucinf', 'tmax', 'fa', 'f', 'fdp']);
         return params.filter(p => {
             const canonicalId = String(p.id || '').toLowerCase();
             if (resultTokens.has(canonicalId)) return true;
@@ -3051,8 +3076,8 @@
             const markerSymbols = [];
             
             parameters.slice().reverse().forEach(param => {
-                const refDiag = extractParamDataWithDiagnostics(refTrialInPair, param);
-                const testDiag = extractParamDataWithDiagnostics(testTrial, param);
+                const refDiag = extractParamDataWithDiagnostics(refTrialInPair, param, { positiveOnly: true });
+                const testDiag = extractParamDataWithDiagnostics(testTrial, param, { positiveOnly: true });
                 const refVals = refDiag.values;
                 const testVals = testDiag.values;
                 excludedCount += refDiag.excluded + testDiag.excluded;
@@ -3449,9 +3474,31 @@
         };
     }
 
+    function populateSensitivityEndpoints() {
+        if (!sensitivityEndpointSelect) return;
+        const pendingEndpoint = sensitivityEndpointSelect.dataset.pendingEndpoint;
+        const prevValue = pendingEndpoint || sensitivityEndpointSelect.value || 'Cmax';
+        delete sensitivityEndpointSelect.dataset.pendingEndpoint;
+
+        const params = getBoxplotParams();
+        if (!params.length) return;
+
+        sensitivityEndpointSelect.innerHTML = '';
+        params.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.label;
+            opt.textContent = p.label;
+            sensitivityEndpointSelect.appendChild(opt);
+        });
+
+        const hasOld = Array.from(sensitivityEndpointSelect.options).some(o => o.value === prevValue);
+        sensitivityEndpointSelect.value = hasOld ? prevValue : (sensitivityEndpointSelect.options[0] ? sensitivityEndpointSelect.options[0].value : 'Cmax');
+    }
+
     function updateSensitivityView() {
         if (!sensitivityContent || !sensitivityEmptyMsg || !sensitivityPlot || !sensitivityTableBody || !sensitivitySummary) return;
 
+        populateSensitivityEndpoints();
         const endpoint = sensitivityEndpointSelect ? sensitivityEndpointSelect.value : 'Cmax';
         const data = buildSensitivityDataset(endpoint);
         sensitivityRowsCache = data.rows || [];
