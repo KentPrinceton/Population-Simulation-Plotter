@@ -592,7 +592,7 @@
 
     function updateRunStatBar() {
         const hasData = !!globalTrialsData || globalObsData.length > 0;
-        runStatBar.classList.toggle('hidden', !hasData);
+        if (runStatBar) runStatBar.classList.toggle('hidden', !hasData);
         if (!hasData) return;
 
         const activeTrials = globalTrialsData ? globalTrialsData.trials.filter(t => t.active).length : 0;
@@ -783,8 +783,12 @@
                     obsConcContains: mapObsConcContains ? mapObsConcContains.value : columnMappingDefaults.obsConcContains
                 },
                 sensitivity: {
-                    endpoint: sensitivityEndpointSelect ? sensitivityEndpointSelect.value : 'Cmax',
-                    baseline: sensitivityBaselineSelect ? sensitivityBaselineSelect.value : 'auto'
+                    endpoint: sensitivityEndpointSelect
+                        ? (sensitivityEndpointSelect.dataset.pendingEndpoint || sensitivityEndpointSelect.value || 'Cmax')
+                        : 'Cmax',
+                    baseline: sensitivityBaselineSelect
+                        ? (sensitivityBaselineSelect.dataset.pendingValue || sensitivityBaselineSelect.value || 'auto')
+                        : 'auto'
                 }
             };
             localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
@@ -931,7 +935,7 @@
         const idx = String(indexStr);
         if (!globalTrialsData.trials[idx]) return;
         beReferenceIndex = idx;
-        beRefTrialSelect.value = idx;
+        if (beRefTrialSelect) beRefTrialSelect.value = idx;
         if (beRefSummary) {
             beRefSummary.textContent = `Reference: ${getTrialLabel(globalTrialsData.trials[idx])}`;
         }
@@ -992,9 +996,9 @@
         try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
 
         // 2. Clear File Inputs
-        fileInputRef.value = '';
-        fileInputTest.value = '';
-        obsFileInput.value = '';
+        if (fileInputRef) fileInputRef.value = '';
+        if (fileInputTest) fileInputTest.value = '';
+        if (obsFileInput) obsFileInput.value = '';
         simRefFileCount = 0;
         simTestFileCount = 0;
         obsFileCount = 0;
@@ -1002,17 +1006,17 @@
         updateObsFooter();
 
         // 3. Reset Sidebar & Top UI
-        trialSelectionPanel.classList.add('hidden');
+        if (trialSelectionPanel) trialSelectionPanel.classList.add('hidden');
         updateFlowSetupState();
-        trialList.innerHTML = '';
-        statSubjects.innerText = '0';
-        statTrials.innerText = '0';
-        statActiveTrials.innerText = '0';
-        beRefTrialSelect.innerHTML = '<option value="">-- Select Reference Trial --</option>';
+        if (trialList) trialList.innerHTML = '';
+        if (statSubjects) statSubjects.innerText = '0';
+        if (statTrials) statTrials.innerText = '0';
+        if (statActiveTrials) statActiveTrials.innerText = '0';
+        if (beRefTrialSelect) beRefTrialSelect.innerHTML = '<option value="">-- Select Reference Trial --</option>';
         if (beTestTrialSelect) beTestTrialSelect.innerHTML = '<option value="">All Test Trials</option>';
         if (beRefSummary) beRefSummary.textContent = 'Select a Reference formulation trial for BE.';
-        btnExportPNG.disabled = true;
-        btnExportCSV.disabled = true;
+        if (btnExportPNG) btnExportPNG.disabled = true;
+        if (btnExportCSV) btnExportCSV.disabled = true;
         if (beMethodSelect) beMethodSelect.value = 'simple';
 
         // 3b. Reset view controls to defaults
@@ -1049,12 +1053,18 @@
         } catch(e) {}
 
         // 5. Clear Grids & Tables
-        document.getElementById('statsTableBody').innerHTML = '';
-        document.getElementById('statsCompareBody').innerHTML = '';
-        document.getElementById('statsComparePanel').classList.add('hidden');
-        document.getElementById('statsTable').parentElement.classList.add('hidden');
-        document.getElementById('boxPlotsGrid').style.display = 'none';
-        document.getElementById('beContent').classList.add('hidden');
+        const _statsTableBody = document.getElementById('statsTableBody');
+        const _statsCompareBody = document.getElementById('statsCompareBody');
+        const _statsComparePanel = document.getElementById('statsComparePanel');
+        const _statsTable = document.getElementById('statsTable');
+        const _boxPlotsGrid = document.getElementById('boxPlotsGrid');
+        const _beContent = document.getElementById('beContent');
+        if (_statsTableBody) _statsTableBody.innerHTML = '';
+        if (_statsCompareBody) _statsCompareBody.innerHTML = '';
+        if (_statsComparePanel) _statsComparePanel.classList.add('hidden');
+        if (_statsTable && _statsTable.parentElement) _statsTable.parentElement.classList.add('hidden');
+        if (_boxPlotsGrid) _boxPlotsGrid.style.display = 'none';
+        if (_beContent) _beContent.classList.add('hidden');
         if (sensitivityContent) sensitivityContent.classList.add('hidden');
         if (sensitivityTableBody) sensitivityTableBody.innerHTML = '';
         if (sensitivitySummary) sensitivitySummary.textContent = '';
@@ -1063,10 +1073,13 @@
         setBoxPlotLoadingState(false);
 
         // 6. Restore Empty States
-        emptyState.classList.remove('hidden');
-        document.getElementById('statsEmptyMsg').classList.remove('hidden');
-        document.getElementById('boxEmptyMsg').classList.remove('hidden');
-        document.getElementById('beEmptyMsg').classList.remove('hidden');
+        if (emptyState) emptyState.classList.remove('hidden');
+        const _statsEmptyMsg = document.getElementById('statsEmptyMsg');
+        const _boxEmptyMsg = document.getElementById('boxEmptyMsg');
+        const _beEmptyMsg = document.getElementById('beEmptyMsg');
+        if (_statsEmptyMsg) _statsEmptyMsg.classList.remove('hidden');
+        if (_boxEmptyMsg) _boxEmptyMsg.classList.remove('hidden');
+        if (_beEmptyMsg) _beEmptyMsg.classList.remove('hidden');
         const beNoParamsText = document.querySelector('#beNoParamsMsg p');
         if (beNoParamsText) beNoParamsText.textContent = 'No valid individual PK parameters found in the selected trials to compute BE.';
 
@@ -1086,7 +1099,7 @@
             if (vc.id === 'view-profile') vc.classList.remove('view-hidden');
             else vc.classList.add('view-hidden');
         });
-        txtExportCSV.innerText = 'Export Profile Data';
+        if (txtExportCSV) txtExportCSV.innerText = 'Export Profile Data';
         updateRunStatBar();
     });
     
@@ -1409,7 +1422,7 @@
         activateTab('view-profile');
 
         showLoading(true);
-        emptyState.classList.add('hidden');
+        if (emptyState) emptyState.classList.add('hidden');
         if (formulationType === 'reference') simRefFileCount += files.length;
         else simTestFileCount += files.length;
         updateFileBadges();
@@ -2182,12 +2195,13 @@
             
             if (k.includes('endpoint') || k.includes('parameter')) stats.epName = String(val);
             else if (k === 'mean') stats.mean = val;
+            else if (k.includes('geom') && k.includes('cv')) stats.cv = val;
             else if (k.includes('cv') && !k.includes('geom')) stats.cv = val;
             else if (k === 'min') stats.min = val;
             else if (k === 'max') stats.max = val;
             else if (k.includes('geom') && !k.includes('cv')) stats.geom = val;
-            else if (k === '90% ci') stats.ci90 = val;
-            else if (k.includes('90% ci') && k.includes('ln')) stats.ci90ln = val; 
+            else if (k.includes('90% ci') && k.includes('ln')) stats.ci90ln = val;
+            else if (k.includes('90% ci')) stats.ci90 = val;
         }
         return stats;
     };
@@ -2500,32 +2514,32 @@
                     hoverinfo: 'skip'
                 });
 
-                if (showContour100.checked) {
+                if (showContour100 && showContour100.checked) {
                     traces.push({ x: times, y: trial.stats.p100, type: 'scatter', mode: 'lines', line: { width: 1, color: `rgba(${rgb}, 0.5)`, dash: 'dot' }, legendgroup: legendGroup, name: `${displayName} (Max)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                     traces.push({ x: times, y: trial.stats.p00, type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: `rgba(${rgb}, 0.05)`, line: { width: 1, color: `rgba(${rgb}, 0.5)`, dash: 'dot' }, legendgroup: legendGroup, name: `${displayName} (Min)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                 }
                 
-                if (showContour95.checked) {
+                if (showContour95 && showContour95.checked) {
                     traces.push({ x: times, y: trial.stats.p975, type: 'scatter', mode: 'lines', line: { width: 1, color: `rgba(${rgb}, 0.6)`, dash: 'dash' }, legendgroup: legendGroup, name: `${displayName} (97.5th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                     traces.push({ x: times, y: trial.stats.p025, type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: `rgba(${rgb}, 0.1)`, line: { width: 1, color: `rgba(${rgb}, 0.6)`, dash: 'dash' }, legendgroup: legendGroup, name: `${displayName} (2.5th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                 }
 
-                if (showContour90.checked) {
+                if (showContour90 && showContour90.checked) {
                     traces.push({ x: times, y: trial.stats.p95, type: 'scatter', mode: 'lines', line: { width: 1.5, color: `rgba(${rgb}, 0.6)`, dash: 'dash' }, legendgroup: legendGroup, name: `${displayName} (95th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                     traces.push({ x: times, y: trial.stats.p05, type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: `rgba(${rgb}, 0.15)`, line: { width: 1.5, color: `rgba(${rgb}, 0.6)`, dash: 'dash' }, legendgroup: legendGroup, name: `${displayName} (5th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                 }
 
-                if (showContoursCheck.checked) {
+                if (showContoursCheck && showContoursCheck.checked) {
                     traces.push({ x: times, y: trial.stats.p75, type: 'scatter', mode: 'lines', line: { width: 0, color: 'transparent' }, legendgroup: legendGroup, name: `${displayName} (75th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                     traces.push({ x: times, y: trial.stats.p25, type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: `rgba(${rgb}, 0.25)`, line: { width: 0, color: 'transparent' }, legendgroup: legendGroup, name: `${displayName} (25th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                 }
 
-                if (showCIMean.checked) {
+                if (showCIMean && showCIMean.checked) {
                     traces.push({ x: times, y: trial.stats.upperCI, type: 'scatter', mode: 'lines', line: { width: 0, color: 'transparent' }, legendgroup: legendGroup, name: `${displayName} (Upper 90% CI)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                     traces.push({ x: times, y: trial.stats.lowerCI, type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: `rgba(${rgb}, 0.25)`, line: { width: 0, color: 'transparent' }, legendgroup: legendGroup, name: `${displayName} (Lower 90% CI)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                 }
 
-                if (showIndividualsCheck.checked) {
+                if (showIndividualsCheck && showIndividualsCheck.checked) {
                     const opacity = Math.max(0.1, Math.min(0.4, 4 / trial.subjectCount)).toFixed(3);
                     const maxIndividualTraces = 250;
                     const step = trial.subjectCount > maxIndividualTraces ? Math.ceil(trial.subjectCount / maxIndividualTraces) : 1;
@@ -2540,7 +2554,7 @@
                     }
                 }
 
-                if (showMedian.checked) {
+                if (showMedian && showMedian.checked) {
                     traces.push({
                         x: times, y: trial.stats.medians, type: 'scatter', mode: 'lines',
                         line: { color: hex, width: 2, dash: 'dash', shape: 'spline', smoothing: 0.4 },
@@ -2550,7 +2564,7 @@
                     });
                 }
 
-                if (showMean.checked) {
+                if (showMean && showMean.checked) {
                     traces.push({
                         x: times, y: trial.stats.means, type: 'scatter', mode: 'lines',
                         line: { color: hex, width: 3, shape: 'spline', smoothing: 0.45 },
@@ -2559,14 +2573,14 @@
                         hovertemplate: `${displayName} Mean<br>Time: %{x:.2f} h<br>Conc: %{y:.4g}<extra></extra>`
                     });
                 }
-
-                if (showContour100.checked) overlayFlags.push('100%');
-                if (showContour95.checked) overlayFlags.push('95%');
-                if (showContour90.checked) overlayFlags.push('90%');
-                if (showContoursCheck.checked) overlayFlags.push('50%');
-                if (showCIMean.checked) overlayFlags.push('CI');
-                if (showIndividualsCheck.checked) overlayFlags.push('Individuals');
             });
+
+            if (showContour100 && showContour100.checked) overlayFlags.push('100%');
+            if (showContour95 && showContour95.checked) overlayFlags.push('95%');
+            if (showContour90 && showContour90.checked) overlayFlags.push('90%');
+            if (showContoursCheck && showContoursCheck.checked) overlayFlags.push('50%');
+            if (showCIMean && showCIMean.checked) overlayFlags.push('CI');
+            if (showIndividualsCheck && showIndividualsCheck.checked) overlayFlags.push('Individuals');
         }
 
         if (globalObsData.length > 0) {
@@ -2580,8 +2594,8 @@
             });
         }
 
-        const xMax = parseFloat(inputXMax.value);
-        const yMax = parseFloat(inputYMax.value);
+        const xMax = inputXMax ? parseFloat(inputXMax.value) : NaN;
+        const yMax = inputYMax ? parseFloat(inputYMax.value) : NaN;
         
         let minPositiveY = Infinity;
         traces.forEach(trace => {
@@ -2629,14 +2643,14 @@
             font: { family: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', color: plotTheme.font },
             hoverlabel: { font: { family: 'inherit', size: 13 }, bgcolor: plotTheme.hoverBg, bordercolor: plotTheme.hoverBorder, namelength: -1 },
             xaxis: { 
-                title: { text: inputXTitle.value || 'Time (h)', font: { size: 13, color: plotTheme.title } }, 
+                title: { text: (inputXTitle && inputXTitle.value) || 'Time (h)', font: { size: 13, color: plotTheme.title } }, 
                 gridcolor: plotTheme.grid, zerolinecolor: plotTheme.zeroline,
                 showline: true, linecolor: plotTheme.axisline, linewidth: 1, mirror: true, ticks: 'outside', tickcolor: plotTheme.tick, tickfont: { color: plotTheme.font },
                 showspikes: true, spikecolor: plotTheme.tick, spikethickness: 1, spikemode: 'across', spikesnap: 'cursor',
                 range: !isNaN(xMax) ? [0, xMax] : undefined, autorange: isNaN(xMax) 
             },
             yaxis: { 
-                title: { text: inputYTitle.value || 'Concentration (ug/mL)', font: { size: 13, color: plotTheme.title } }, 
+                title: { text: (inputYTitle && inputYTitle.value) || 'Concentration (ug/mL)', font: { size: 13, color: plotTheme.title } }, 
                 gridcolor: plotTheme.grid, zerolinecolor: plotTheme.zeroline,
                 showline: true, linecolor: plotTheme.axisline, linewidth: 1, mirror: true, ticks: 'outside', tickcolor: plotTheme.tick, tickfont: { color: plotTheme.font },
                 showspikes: true, spikecolor: plotTheme.tick, spikethickness: 1, spikemode: 'across', spikesnap: 'cursor',
@@ -2889,17 +2903,19 @@
         // globalBEData = []; // Clear previous exports - MOVED to runBEAnalysis to preserve results when switching views or methods
         const isRerunPromptState = beNeedsRerun && !hasReviewedResults && !forceRun;
         if (isRerunPromptState) {
-            beWarningMsg.textContent = 'BE method changed. Click "Run BE" to regenerate charts and table.';
-            beWarningMsg.classList.remove('hidden');
-        } else {
+            if (beWarningMsg) {
+                beWarningMsg.textContent = 'BE method changed. Click "Run BE" to regenerate charts and table.';
+                beWarningMsg.classList.remove('hidden');
+            }
+        } else if (beWarningMsg) {
             beWarningMsg.classList.add('hidden');
             beWarningMsg.textContent = '';
         }
 
         if (!hasReviewedResults && !forceRun) {
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.remove('hidden');
-            beNoParamsMsg.classList.add('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.remove('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.add('hidden');
             if (beNeedsRerun && beEmptyText) {
                 beEmptyText.textContent = 'Method changed. Click "Run BE" to regenerate results.';
             }
@@ -2922,9 +2938,9 @@
         }
 
         if (!globalTrialsData) {
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.remove('hidden');
-            beNoParamsMsg.classList.add('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.remove('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.add('hidden');
             if (beRefSummary) beRefSummary.textContent = 'Select a Reference formulation trial for BE.';
             return;
         }
@@ -2939,9 +2955,9 @@
 
         const resolvedRefIdx = beReferenceIndex !== '' ? String(beReferenceIndex) : '';
         if (!isPairedTrialNumberMode && (resolvedRefIdx === "" || !globalTrialsData.trials[resolvedRefIdx])) {
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.remove('hidden');
-            beNoParamsMsg.classList.add('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.remove('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.add('hidden');
             if (beRefSummary) beRefSummary.textContent = 'Select a Reference formulation trial for BE.';
             return;
         }
@@ -3027,16 +3043,17 @@
             const testTrials = globalTrialsData.trials.filter((t, i) => {
                 const isTestFormulation = t.formulationType === 'test';
                 const isActive = !!t.active;
+                const hasParams = !!(t.rawParams && t.rawParams.length > 0);
                 const selectedTestMatch = testIdx === '' ? true : String(i) === testIdx;
-                return isTestFormulation && isActive && selectedTestMatch;
+                return isTestFormulation && isActive && hasParams && selectedTestMatch;
             });
             comparisonPairs = testTrials.map(t => ({ refTrial, testTrial: t, label: getTrialLabel(t) }));
         }
 
         if (comparisonPairs.length === 0) {
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.add('hidden');
-            beNoParamsMsg.classList.remove('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.add('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.remove('hidden');
             if (beNoParamsText) {
                 beNoParamsText.textContent = isPairedTrialNumberMode
                     ? 'No matched active trial numbers found between Reference and Test trials. Keep both formulations active for the same trial numbers.'
@@ -3046,9 +3063,9 @@
         }
 
         if (!isPairedTrialNumberMode && (!refTrial.rawParams || refTrial.rawParams.length === 0)) {
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.add('hidden');
-            beNoParamsMsg.classList.remove('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.add('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.remove('hidden');
             if (beNoParamsText) beNoParamsText.textContent = 'Selected Reference trial has no valid PK parameter rows for BE computation.';
             return;
         }
@@ -3157,18 +3174,18 @@
 
         if(!hasValidData) {
             globalBEData = [];
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.add('hidden');
-            beNoParamsMsg.classList.remove('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.add('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.remove('hidden');
             if (beNoParamsText) beNoParamsText.textContent = 'No valid individual PK parameters found in the selected trials to compute BE.';
             return;
         }
 
         globalBEData = beExportRows;
 
-        beContent.classList.remove('hidden');
-        beEmptyMsg.classList.add('hidden');
-        beNoParamsMsg.classList.add('hidden');
+        if (beContent) beContent.classList.remove('hidden');
+        if (beEmptyMsg) beEmptyMsg.classList.add('hidden');
+        if (beNoParamsMsg) beNoParamsMsg.classList.add('hidden');
 
         const paramOrder = { Cmax: 0, AUCt: 1, AUCinf: 2 };
         const orderedTableRows = beTableRows.slice().sort((a, b) => {
@@ -3206,7 +3223,7 @@
             if (bePairingDetail) bePairingDetail.textContent = pairingDetailText;
         }
 
-        if (excludedCount > 0) {
+        if (excludedCount > 0 && beWarningMsg) {
             beWarningMsg.textContent = `${excludedCount} non-positive PK values were excluded from log-transformed BE calculations.`;
             beWarningMsg.classList.remove('hidden');
         }
@@ -3397,8 +3414,9 @@
         }
     }
 
-    function buildSensitivityDataset(paramTypeInput) {
+    function buildSensitivityDataset(paramTypeInput, opts) {
         const paramType = String(paramTypeInput || 'Cmax');
+        const skipDomUpdate = opts && opts.skipDomUpdate;
         if (!globalTrialsData || !Array.isArray(globalTrialsData.trials)) {
             return { rows: [], reason: 'Upload simulation files to run sensitivity analysis.' };
         }
@@ -3422,7 +3440,7 @@
             };
         }).filter(Boolean);
 
-        if (sensitivityBaselineSelect) {
+        if (sensitivityBaselineSelect && !skipDomUpdate) {
             const desiredValue = sensitivityBaselineSelect.dataset.pendingValue || sensitivityBaselineSelect.value || 'auto';
             sensitivityBaselineSelect.innerHTML = '<option value="auto">Auto (first active Reference / first active trial)</option>';
             populated.forEach(row => {
@@ -3481,7 +3499,11 @@
         delete sensitivityEndpointSelect.dataset.pendingEndpoint;
 
         const params = getBoxplotParams();
-        if (!params.length) return;
+        if (!params.length) {
+            sensitivityEndpointSelect.innerHTML = '<option value="Cmax">Cmax</option>';
+            sensitivityEndpointSelect.value = 'Cmax';
+            return;
+        }
 
         sensitivityEndpointSelect.innerHTML = '';
         params.forEach(p => {
@@ -3795,8 +3817,7 @@
             if (!trial.active || !trial.rawParams || trial.rawParams.length === 0) return;
             
             const paramKeys = Object.keys(trial.rawParams[0]);
-            const targets = ['cmax', 'auc'];
-            const validKeys = paramKeys.filter(k => k && targets.some(t => k.toLowerCase().includes(t)));
+            const validKeys = paramKeys.filter(k => k && !isLikelyMetadataParam(k) && paramHasFiniteValues(trial, k));
 
             trial.rawParams.forEach((row, i) => {
                 validKeys.forEach(k => {
@@ -3818,8 +3839,13 @@
 
     function getBECSVContent() {
         if (globalBEData.length === 0) return null;
-        const header = ['Parameter', 'Test_Trial', 'Reference_Trial', 'Point_Estimate_Percent', 'Lower_90_CI', 'Upper_90_CI', 'Status'];
-        const rows = globalBEData.map(row => [row.param, row.testTrial, row.refTrial, row.pe, row.lower, row.upper, row.status]);
+        const hasPairs = globalBEData.some(row => row.pair);
+        const header = hasPairs
+            ? ['Parameter', 'Test_Trial', 'Reference_Trial', 'Pair', 'Point_Estimate_Percent', 'Lower_90_CI', 'Upper_90_CI', 'Status']
+            : ['Parameter', 'Test_Trial', 'Reference_Trial', 'Point_Estimate_Percent', 'Lower_90_CI', 'Upper_90_CI', 'Status'];
+        const rows = globalBEData.map(row => hasPairs
+            ? [row.param, row.testTrial, row.refTrial, row.pair || '', row.pe, row.lower, row.upper, row.status]
+            : [row.param, row.testTrial, row.refTrial, row.pe, row.lower, row.upper, row.status]);
         return `${buildExportMetadata('Bioequivalence')}\n${toCSVRow(header)}\n${rows.map(toCSVRow).join('\n')}\n`;
     }
 
@@ -3831,8 +3857,10 @@
 
     function getSensitivityCSVContent() {
         if (!globalTrialsData) return null;
-        const endpoint = sensitivityEndpointSelect ? sensitivityEndpointSelect.value : 'Cmax';
-        const data = buildSensitivityDataset(endpoint);
+        const endpoint = sensitivityEndpointSelect
+            ? (sensitivityEndpointSelect.dataset.pendingEndpoint || sensitivityEndpointSelect.value || 'Cmax')
+            : 'Cmax';
+        const data = buildSensitivityDataset(endpoint, { skipDomUpdate: true });
         if (!data.rows || data.rows.length < 2) return null;
 
         const header = ['Trial_Number', 'Trial_Label', 'Type', 'Endpoint', 'Mean', 'Baseline_Trial', 'Baseline_Mean', 'Delta_Percent', 'Absolute_Delta_Percent'];
@@ -3906,7 +3934,7 @@
 
     function showLoading(isVisible) {
         if (isVisible) {
-            loadingSpinner.classList.remove('hidden');
+            if (loadingSpinner) loadingSpinner.classList.remove('hidden');
             if (loadingOverlay) {
                 loadingOverlay.classList.remove('hidden');
                 loadingOverlay.classList.add('flex');
@@ -3914,7 +3942,7 @@
             if (emptyState) emptyState.classList.add('hidden');
             document.body.classList.add('cursor-progress');
         } else {
-            loadingSpinner.classList.add('hidden');
+            if (loadingSpinner) loadingSpinner.classList.add('hidden');
             if (loadingOverlay) {
                 loadingOverlay.classList.add('hidden');
                 loadingOverlay.classList.remove('flex');
