@@ -1580,6 +1580,36 @@
         return el && el.data ? el : null;
     }
 
+    const VIEW_EXPORT_CONFIG = {
+        'view-profile': {
+            csvLabel: 'Export Profile Data',
+            canExportPNG: () => !!globalTrialsData || globalObsData.length > 0,
+            canExportCSV: () => !!globalTrialsData
+        },
+        'view-params': {
+            csvLabel: 'Export Param Data',
+            canExportPNG: () => !!globalTrialsData,
+            canExportCSV: () => !!globalTrialsData
+        },
+        'view-be': {
+            csvLabel: 'Export BE Data',
+            canExportPNG: () => !!globalTrialsData,
+            canExportCSV: () => !!globalTrialsData
+        },
+        'view-stats': {
+            csvLabel: 'Export Stats Data',
+            canExportPNG: () => false,
+            canExportCSV: () => !!globalTrialsData
+        }
+    };
+
+    function applyExportControlsForView(viewId) {
+        const cfg = VIEW_EXPORT_CONFIG[viewId] || VIEW_EXPORT_CONFIG['view-profile'];
+        if (btnExportPNG) btnExportPNG.disabled = !cfg.canExportPNG();
+        if (txtExportCSV) txtExportCSV.innerText = cfg.csvLabel;
+        if (btnExportCSV) btnExportCSV.disabled = !cfg.canExportCSV();
+    }
+
     // Tab Logic
     const tabBtns = document.querySelectorAll('.tab-btn');
     const viewContainers = document.querySelectorAll('.view-container');
@@ -1606,24 +1636,7 @@
             });
 
             // Adjust exports based on view
-            if(targetId === 'view-profile') {
-                btnExportPNG.disabled = !globalTrialsData && globalObsData.length === 0;
-                txtExportCSV.innerText = "Export Profile Data";
-                btnExportCSV.disabled = !globalTrialsData;
-            } else if (targetId === 'view-params') {
-                btnExportPNG.disabled = !globalTrialsData;
-                txtExportCSV.innerText = "Export Param Data";
-                btnExportCSV.disabled = !globalTrialsData;
-            } else if (targetId === 'view-be') {
-                btnExportPNG.disabled = !globalTrialsData;
-                txtExportCSV.innerText = "Export BE Data";
-                btnExportCSV.disabled = !globalTrialsData;
-            } else {
-                // view-stats
-                btnExportPNG.disabled = true;
-                txtExportCSV.innerText = "Export Stats Data";
-                btnExportCSV.disabled = !globalTrialsData;
-            }
+            applyExportControlsForView(targetId);
 
             // Force redraw to fix Plotly resizing issues when div is unhidden
             updateAllViews();
@@ -1794,6 +1807,7 @@
     loadSessionState();
     syncBoxResultsOnlyButton();
     updateFlowSetupState();
+    applyExportControlsForView(currentTab);
 
     function computeActiveCmaxMean() {
         if (!globalTrialsData) return null;
@@ -2761,10 +2775,10 @@
 
             if (parsedObsData.length > 0) {
                 globalObsData = globalObsData.concat(parsedObsData.map(({ fileName, x, y }) => ({ fileName, x, y })));
-                btnExportPNG.disabled = false;
                 obsFileCount += parsedObsData.length;
                 updateFileBadges();
                 updateObsFooter();
+                applyExportControlsForView(currentTab);
                 if(currentTab==='view-profile') updatePlot();
             } else if (!globalTrialsData && globalObsData.length === 0) {
                 emptyState.classList.remove('hidden');
@@ -2950,7 +2964,7 @@
         trialSelectionPanel.classList.remove('hidden');
         updateFlowSetupState();
         setRailActive(btnSidebarPopulation);
-        btnExportCSV.disabled = false;
+        applyExportControlsForView(currentTab);
 
         renderTrialList();
         updateBERefSelect();
@@ -4203,6 +4217,7 @@
         const parameters = ['Cmax', 'AUCt', 'AUCinf'];
         let hasValidData = false;
         let excludedCount = 0;
+        const beExportRows = [];
         
         const bePlotRows = [];
         const beTableRows = [];
@@ -4265,7 +4280,7 @@
                         });
                         
                         // Push to export data
-                        globalBEData.push({
+                        beExportRows.push({
                             param: param,
                             testTrial: getTrialLabel(testTrial),
                             refTrial: getTrialLabel(refTrialInPair),
@@ -4302,12 +4317,15 @@
         });
 
         if(!hasValidData) {
+            globalBEData = [];
             beContent.classList.add('hidden');
             beEmptyMsg.classList.add('hidden');
             beNoParamsMsg.classList.remove('hidden');
             if (beNoParamsText) beNoParamsText.textContent = 'No valid individual PK parameters found in the selected trials to compute BE.';
             return;
         }
+
+        globalBEData = beExportRows;
 
         beContent.classList.remove('hidden');
         beEmptyMsg.classList.add('hidden');
@@ -4683,9 +4701,14 @@
         return `"${str.replace(/"/g, '""')}"`;
     }
 
+    function toCSVRow(values) {
+        return values.map(escapeCSVValue).join(',');
+    }
+
     function getStatsCSVContent() {
         if (!globalTrialsData) return null;
-        let csvContent = buildExportMetadata('Summary Stats') + "\nTrial_Number,Endpoint,Mean,CV_Percent,Min,Max,Geom_Mean,90_CI_Arith,90_CI_Ln\n";
+        const header = ['Trial_Number', 'Endpoint', 'Mean', 'CV_Percent', 'Min', 'Max', 'Geom_Mean', '90_CI_Arith', '90_CI_Ln'];
+        const rows = [];
         
         globalTrialsData.trials.forEach(trial => {
             if (!trial.active || !trial.rawStats || trial.rawStats.length === 0) return;
@@ -4696,15 +4719,21 @@
                 if (ext.epName === '-' || (ext.mean === '-' && ext.cv === '-')) return;
                 if (typeof ext.epName === 'string' && ext.epName.trim() === '') return;
 
-                const cleanEpName = String(ext.epName).replace(/,/g, ''); 
-                const cleanCI = String(ext.ci90).replace(/,/g, '');
-                const cleanCILn = String(ext.ci90ln).replace(/,/g, '');
-
-                csvContent += `${trial.trialNumber},${cleanEpName},${ext.mean},${ext.cv},${ext.min},${ext.max},${ext.geom},${cleanCI},${cleanCILn}\n`;
+                rows.push([
+                    trial.trialNumber,
+                    ext.epName,
+                    ext.mean,
+                    ext.cv,
+                    ext.min,
+                    ext.max,
+                    ext.geom,
+                    ext.ci90,
+                    ext.ci90ln
+                ]);
             });
         });
 
-        return csvContent;
+        return `${buildExportMetadata('Summary Stats')}\n${toCSVRow(header)}\n${rows.map(toCSVRow).join('\n')}${rows.length ? '\n' : ''}`;
     }
 
     function exportStatsToCSV(filename = "GastroPlus_Summary_Stats.csv") {
@@ -4715,7 +4744,8 @@
     
     function getParamsCSVContent() {
         if (!globalTrialsData) return null;
-        let csvContent = buildExportMetadata('PK Parameters') + "\nTrial_Number,Subject,Parameter,Value\n";
+        const header = ['Trial_Number', 'Subject', 'Parameter', 'Value'];
+        const rows = [];
         
         globalTrialsData.trials.forEach(trial => {
             if (!trial.active || !trial.rawParams || trial.rawParams.length === 0) return;
@@ -4726,14 +4756,14 @@
 
             trial.rawParams.forEach((row, i) => {
                 validKeys.forEach(k => {
-                    if (row[k] != null && Number.isFinite(row[k])) {
-                        csvContent += `${trial.trialNumber},Subject_${i+1},${k.replace(/,/g, '')},${row[k]}\n`;
-                    }
+                    const parsed = parseNumericCell(row[k]);
+                    if (!Number.isFinite(parsed)) return;
+                    rows.push([trial.trialNumber, `Subject_${i + 1}`, k, parsed]);
                 });
             });
         });
 
-        return csvContent;
+        return `${buildExportMetadata('PK Parameters')}\n${toCSVRow(header)}\n${rows.map(toCSVRow).join('\n')}${rows.length ? '\n' : ''}`;
     }
 
     function exportParamsToCSV(filename = "GastroPlus_PK_Parameters.csv") {
@@ -4744,21 +4774,9 @@
 
     function getBECSVContent() {
         if (globalBEData.length === 0) return null;
-        let csvContent = buildExportMetadata('Bioequivalence') + "\nParameter,Test_Trial,Reference_Trial,Point_Estimate_Percent,Lower_90_CI,Upper_90_CI,Status\n";
-        
-        globalBEData.forEach(row => {
-            csvContent += [
-                escapeCSVValue(row.param),
-                escapeCSVValue(row.testTrial),
-                escapeCSVValue(row.refTrial),
-                escapeCSVValue(row.pe),
-                escapeCSVValue(row.lower),
-                escapeCSVValue(row.upper),
-                escapeCSVValue(row.status)
-            ].join(',') + "\n";
-        });
-
-        return csvContent;
+        const header = ['Parameter', 'Test_Trial', 'Reference_Trial', 'Point_Estimate_Percent', 'Lower_90_CI', 'Upper_90_CI', 'Status'];
+        const rows = globalBEData.map(row => [row.param, row.testTrial, row.refTrial, row.pe, row.lower, row.upper, row.status]);
+        return `${buildExportMetadata('Bioequivalence')}\n${toCSVRow(header)}\n${rows.map(toCSVRow).join('\n')}\n`;
     }
 
     function exportBEDataToCSV(filename = "GastroPlus_BE_Results.csv") {
@@ -4776,25 +4794,25 @@
             if (!hasStats) computeTrialProfileStats(trial);
         });
         
-        let csvContent = buildExportMetadata('Aggregated Profile') + "\nTrial_Number,Time,Mean,Median,Min,2.5th_Percentile,5th_Percentile,25th_Percentile,75th_Percentile,95th_Percentile,97.5th_Percentile,Max,Lower_90CI_Mean,Upper_90CI_Mean\n";
+        const header = ['Trial_Number', 'Time', 'Mean', 'Median', 'Min', '2.5th_Percentile', '5th_Percentile', '25th_Percentile', '75th_Percentile', '95th_Percentile', '97.5th_Percentile', 'Max', 'Lower_90CI_Mean', 'Upper_90CI_Mean'];
+        const rows = [];
 
         globalTrialsData.trials.forEach(trial => {
             if (!trial.active || !trial.stats.means || !trial.stats.means.length) return;
             
             trial.times.forEach((t, i) => {
-                const row = [
+                rows.push([
                     trial.trialNumber, t,
                     trial.stats.means[i], trial.stats.medians[i],
                     trial.stats.p00[i], trial.stats.p025[i], trial.stats.p05[i], 
                     trial.stats.p25[i], trial.stats.p75[i], 
                     trial.stats.p95[i], trial.stats.p975[i], trial.stats.p100[i],
                     trial.stats.lowerCI[i], trial.stats.upperCI[i]
-                ].map(v => v !== null && v !== undefined ? v : '').join(',');
-                csvContent += row + "\n";
+                ]);
             });
         });
 
-        return csvContent;
+        return `${buildExportMetadata('Aggregated Profile')}\n${toCSVRow(header)}\n${rows.map(toCSVRow).join('\n')}${rows.length ? '\n' : ''}`;
     }
 
     function exportDataToCSV(filename = "GastroPlus_Aggregated_Profiles.csv") {
