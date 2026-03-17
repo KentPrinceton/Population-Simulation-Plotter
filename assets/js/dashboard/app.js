@@ -599,10 +599,10 @@
         const subjects = globalTrialsData ? globalTrialsData.totalSubjects : 0;
         const cmaxMean = computeActiveCmaxMean();
 
-        runStatSubjects.textContent = subjects;
-        runStatTrials.textContent = activeTrials;
-        runStatObs.textContent = globalObsData.length;
-        runStatCmax.textContent = Number.isFinite(cmaxMean) ? cmaxMean.toFixed(3) : '-';
+        if (runStatSubjects) runStatSubjects.textContent = subjects;
+        if (runStatTrials) runStatTrials.textContent = activeTrials;
+        if (runStatObs) runStatObs.textContent = globalObsData.length;
+        if (runStatCmax) runStatCmax.textContent = Number.isFinite(cmaxMean) ? cmaxMean.toFixed(3) : '-';
     }
 
     function setRailActive(activeBtn) {
@@ -1036,7 +1036,10 @@
         if (targetConcUnitSelect) targetConcUnitSelect.value = 'ug/ml';
         if (inputXMax) inputXMax.value = '';
         if (inputYMax) inputYMax.value = '';
-        if (sensitivityEndpointSelect) sensitivityEndpointSelect.value = 'Cmax';
+        if (sensitivityEndpointSelect) {
+            sensitivityEndpointSelect.innerHTML = '<option value="Cmax">Cmax</option>';
+            sensitivityEndpointSelect.value = 'Cmax';
+        }
         if (sensitivityBaselineSelect) {
             sensitivityBaselineSelect.innerHTML = '<option value="auto">Auto (first active Reference / first active trial)</option>';
             sensitivityBaselineSelect.value = 'auto';
@@ -1445,7 +1448,7 @@
             if (parsedFilesData.length > 0) {
                 processTrialsData(parsedFilesData);
             } else if (!globalTrialsData && globalObsData.length === 0) {
-                emptyState.classList.remove('hidden');
+                if (emptyState) emptyState.classList.remove('hidden');
             }
         } finally {
             showLoading(false);
@@ -1583,7 +1586,7 @@
         activateTab('view-profile');
 
         showLoading(true);
-        emptyState.classList.add('hidden');
+        if (emptyState) emptyState.classList.add('hidden');
         try {
             const settled = await Promise.allSettled(files.map(file => processObsFile(file)));
             const parsedObsData = [];
@@ -1607,7 +1610,7 @@
                 applyExportControlsForView(currentTab);
                 if(currentTab==='view-profile') updatePlot();
             } else if (!globalTrialsData && globalObsData.length === 0) {
-                emptyState.classList.remove('hidden');
+                if (emptyState) emptyState.classList.remove('hidden');
             }
         } finally {
             showLoading(false);

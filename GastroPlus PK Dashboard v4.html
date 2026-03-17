@@ -589,17 +589,11 @@
                     <p class="text-sm font-semibold mt-0.5" style="color: var(--text-primary);">Endpoint change relative to a baseline trial.</p>
                 </div>
                 <div class="flex items-center gap-2 ml-auto flex-wrap">
-                    <label class="text-xs font-semibold" style="color: var(--text-secondary);">Endpoint:</label>
+                    <label for="sensitivityEndpointSelect" class="text-xs font-semibold" style="color: var(--text-secondary);">Endpoint:</label>
                     <select id="sensitivityEndpointSelect" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 140px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);">
                         <option value="Cmax">Cmax</option>
-                        <option value="AUCt">AUCt</option>
-                        <option value="AUCinf">AUCinf</option>
-                        <option value="Tmax">Tmax</option>
-                        <option value="Fa">Fa</option>
-                        <option value="Fdp">Fdp</option>
-                        <option value="F">F</option>
                     </select>
-                    <label class="text-xs font-semibold" style="color: var(--text-secondary);">Baseline:</label>
+                    <label for="sensitivityBaselineSelect" class="text-xs font-semibold" style="color: var(--text-secondary);">Baseline:</label>
                     <select id="sensitivityBaselineSelect" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 230px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);">
                         <option value="auto">Auto (first active Reference / first active trial)</option>
                     </select>
