@@ -402,6 +402,9 @@
                 else vc.classList.add('view-hidden');
             });
 
+            // Update ARIA tab state
+            tabBtns.forEach(b => b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
+
             // Adjust exports based on view
             applyExportControlsForView(targetId);
 
@@ -973,12 +976,26 @@
     }
     
     // Graceful reset without reloading the page
-    addListener(btnReset, 'click', () => {
+    function performReset() {
         const hasLoadedData = !!globalTrialsData || globalObsData.length > 0;
-        if (hasLoadedData) {
-            const confirmed = window.confirm('Reset will clear all uploaded data, selected trials, and current analysis state. Continue?');
-            if (!confirmed) return;
+        if (!hasLoadedData) { doReset(); return; }
+        const overlay = document.getElementById('resetConfirmOverlay');
+        if (overlay) {
+            overlay.classList.add('show');
+            const cancelBtn = document.getElementById('btnResetCancel');
+            const confirmBtn = document.getElementById('btnResetConfirm');
+            const dismiss = () => { overlay.classList.remove('show'); };
+            const confirm = () => { dismiss(); doReset(); };
+            if (cancelBtn) { cancelBtn.onclick = dismiss; }
+            if (confirmBtn) { confirmBtn.onclick = confirm; }
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(); }, { once: true });
+        } else {
+            if (!window.confirm('Reset will clear all uploaded data, selected trials, and current analysis state. Continue?')) return;
+            doReset();
         }
+    }
+    addListener(btnReset, 'click', performReset);
+    function doReset() {
 
         // 1. Reset Global State
         globalTrialsData = null;
@@ -1104,7 +1121,7 @@
         });
         if (txtExportCSV) txtExportCSV.innerText = 'Export Profile Data';
         updateRunStatBar();
-    });
+    }
     
     const triggerVisualUpdate = () => { 
         if(currentTab === 'view-profile' && (globalTrialsData || globalObsData.length > 0)) updatePlot(); 
@@ -2674,13 +2691,22 @@
         });
     }
 
+    function extractParamUnit(rawKey) {
+        if (!rawKey) return '';
+        const parenMatch = rawKey.match(/\(([^)]+)\)\s*$/);
+        if (parenMatch) return parenMatch[1].trim();
+        const bracketMatch = rawKey.match(/\[([^\]]+)\]\s*$/);
+        if (bracketMatch) return bracketMatch[1].trim();
+        return '';
+    }
+
     // -- Plotting Logic: Boxplots (Grid) --
     function renderBoxPlot(targetDiv, paramType) {
         if (!globalTrialsData) return;
         const traces = [];
         let dataFound = false;
+        let detectedUnit = '';
         const paramLabel = typeof paramType === 'string' ? paramType : (paramType && paramType.label ? paramType.label : 'Parameter');
-        const axisLabel = shortenAxisLabel(paramLabel, 22);
 
         globalTrialsData.trials.forEach((trial, index) => {
             if (!trial.active || !trial.rawParams || trial.rawParams.length === 0) return;
@@ -2692,6 +2718,7 @@
             
             if (!targetKey) return;
             dataFound = true;
+            if (!detectedUnit) detectedUnit = extractParamUnit(targetKey);
 
             const paramValues = [];
             trial.rawParams.forEach(row => {
@@ -2735,6 +2762,9 @@
         targetEl.innerHTML = '';
         const plotHeight = getPlotPanelCanvasHeight(targetEl);
         targetEl.style.height = `${plotHeight}px`;
+
+        const fullLabel = detectedUnit ? `${paramLabel} (${detectedUnit})` : paramLabel;
+        const axisLabel = shortenAxisLabel(fullLabel, 30);
 
         const plotTheme = getPlotTheme();
         const layout = {
@@ -3213,8 +3243,8 @@
                 <td class="px-5 py-2.5 whitespace-nowrap text-sm text-right" style="color:${row.isUpperFail ? '#f87171' : 'var(--text-secondary)'}; font-weight:${row.isUpperFail ? '700' : '400'}">${row.upperText}</td>
                 <td class="px-5 py-2.5 whitespace-nowrap text-center">
                     ${row.isBE
-                        ? '<span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.25);padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;">Pass</span>'
-                        : '<span style="background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.25);padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;">Fail</span>'}
+                        ? '<span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.25);padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Pass</span>'
+                        : '<span style="background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.25);padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Fail</span>'}
                 </td>
             `;
             tbody.appendChild(tr);
@@ -3432,6 +3462,9 @@
             const values = extractParamData(trial, paramType);
             if (!values.length) return null;
             const mean = values.reduce((a, b) => a + b, 0) / values.length;
+            const variance = values.length > 1 ? values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (values.length - 1) : 0;
+            const sd = Math.sqrt(variance);
+            const cv = mean !== 0 ? (sd / Math.abs(mean)) * 100 : null;
             return {
                 index,
                 trial,
@@ -3439,6 +3472,8 @@
                 trialNumber: trial.trialNumber,
                 formulationType: trial.formulationType === 'reference' ? 'reference' : 'test',
                 mean,
+                sd,
+                cv,
                 n: values.length
             };
         }).filter(Boolean);
@@ -3548,6 +3583,7 @@
         sensitivityTableBody.innerHTML = data.rows.map(row => {
             const delta = Number.isFinite(row.deltaPct) ? row.deltaPct.toFixed(2) : '-';
             const absDelta = Number.isFinite(row.absDeltaPct) ? row.absDeltaPct.toFixed(2) : '-';
+            const cvStr = Number.isFinite(row.cv) ? row.cv.toFixed(1) + '%' : '-';
             const deltaColor = row.isBaseline ? 'var(--accent)' : (row.deltaPct >= 0 ? '#4ade80' : '#f87171');
             const trialType = row.formulationType === 'reference' ? 'REF' : 'TEST';
             return `
@@ -3557,6 +3593,7 @@
                     </td>
                     <td class="px-4 py-2 text-xs" style="color:var(--text-secondary)">${trialType}</td>
                     <td class="px-4 py-2 text-sm text-right" style="color:var(--text-primary);font-variant-numeric:tabular-nums">${row.mean.toFixed(4)}</td>
+                    <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${cvStr}</td>
                     <td class="px-4 py-2 text-sm text-right" style="color:${deltaColor};font-weight:${row.isBaseline ? '700' : '600'};font-variant-numeric:tabular-nums">${delta}</td>
                     <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${absDelta}</td>
                 </tr>
@@ -3587,7 +3624,13 @@
             },
             text: plotRows.map(r => Number.isFinite(r.deltaPct) ? `${r.deltaPct.toFixed(2)}%` : ''),
             textposition: 'auto',
-            hovertemplate: '%{y}<br>Delta: %{x:.2f}%<extra></extra>'
+            customdata: plotRows.map(r => [
+                r.mean ? r.mean.toFixed(4) : '-',
+                Number.isFinite(r.cv) ? r.cv.toFixed(1) + '%' : '-',
+                Number.isFinite(r.sd) ? r.sd.toFixed(4) : '-',
+                r.n || 0
+            ]),
+            hovertemplate: '%{y}<br>Δ: %{x:.2f}%<br>Mean: %{customdata[0]}<br>CV: %{customdata[1]}<br>SD: %{customdata[2]}<br>n: %{customdata[3]}<extra></extra>'
         };
 
         const maxAbs = plotRows.reduce((m, r) => Math.max(m, Math.abs(r.deltaPct)), 0);
@@ -3952,4 +3995,176 @@
             }
             document.body.classList.remove('cursor-progress');
         }
+    }
+
+    // ── Sidebar Collapse Toggle ──
+    const sidebarEl = document.querySelector('.lab-shell');
+    const sidebarToggleBtn = document.getElementById('btnSidebarToggle');
+    if (sidebarToggleBtn && sidebarEl) {
+        sidebarToggleBtn.addEventListener('click', () => {
+            sidebarEl.classList.toggle('sidebar-collapsed');
+            setTimeout(() => {
+                if (currentTab === 'view-profile') updatePlot();
+                window.dispatchEvent(new Event('resize'));
+            }, 300);
+        });
+    }
+
+    // ── Trial Search/Filter ──
+    const trialSearchInput = document.getElementById('trialSearchInput');
+    if (trialSearchInput) {
+        trialSearchInput.addEventListener('input', () => {
+            const query = trialSearchInput.value.toLowerCase().trim();
+            const rows = document.querySelectorAll('#trialList .trial-row');
+            rows.forEach(row => {
+                if (!query) { row.style.display = ''; return; }
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        });
+    }
+
+    // ── ARIA: Update tab aria-selected on switch ──
+    function updateTabAria(targetId) {
+        tabBtns.forEach(btn => {
+            const isActive = btn.getAttribute('data-target') === targetId;
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+    }
+
+    // ── Keyboard Shortcuts ──
+    document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+        const tabTargets = ['view-profile', 'view-params', 'view-be', 'view-stats', 'view-sensitivity'];
+        if (e.key >= '1' && e.key <= '5') {
+            e.preventDefault();
+            activateTab(tabTargets[parseInt(e.key) - 1]);
+            return;
+        }
+        if (e.key === 'l' || e.key === 'L') {
+            e.preventDefault();
+            const logBtn = document.getElementById(isLogScale ? 'btnScaleLinear' : 'btnScaleLog');
+            if (logBtn) logBtn.click();
+            return;
+        }
+    });
+
+    // ── Export Dropdown (mobile) ──
+    const btnExportMenu = document.getElementById('btnExportMenu');
+    const exportDropdown = document.getElementById('exportDropdown');
+    if (btnExportMenu && exportDropdown) {
+        btnExportMenu.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = exportDropdown.classList.toggle('show');
+            btnExportMenu.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+        document.addEventListener('click', () => {
+            exportDropdown.classList.remove('show');
+            btnExportMenu.setAttribute('aria-expanded', 'false');
+        });
+        const mobileBundle = document.getElementById('btnExportBundleMobile');
+        const mobileCSV = document.getElementById('btnExportCSVMobile');
+        const mobilePNG = document.getElementById('btnExportPNGMobile');
+        if (mobileBundle) mobileBundle.addEventListener('click', () => { if (btnExportBundle && !btnExportBundle.disabled) btnExportBundle.click(); });
+        if (mobileCSV) mobileCSV.addEventListener('click', () => { if (btnExportCSV && !btnExportCSV.disabled) btnExportCSV.click(); });
+        if (mobilePNG) mobilePNG.addEventListener('click', () => { if (btnExportPNG && !btnExportPNG.disabled) btnExportPNG.click(); });
+
+        new MutationObserver(() => {
+            if (mobileBundle) mobileBundle.disabled = !!(btnExportBundle && btnExportBundle.disabled);
+            if (mobileCSV) mobileCSV.disabled = !!(btnExportCSV && btnExportCSV.disabled);
+            if (mobilePNG) mobilePNG.disabled = !!(btnExportPNG && btnExportPNG.disabled);
+        }).observe(document.querySelector('.header-export-group'), { attributes: true, subtree: true, attributeFilter: ['disabled'] });
+    }
+
+    // ── Sortable Tables ──
+    function makeSortable(tableId) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        const thead = table.querySelector('thead');
+        if (!thead) return;
+        const ths = thead.querySelectorAll('th');
+        ths.forEach((th, colIdx) => {
+            th.classList.add('sortable');
+            th.addEventListener('click', () => {
+                const tbody = table.querySelector('tbody');
+                if (!tbody) return;
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                if (rows.length < 2) return;
+
+                const isAsc = th.classList.contains('sort-asc');
+                ths.forEach(h => { h.classList.remove('sort-asc', 'sort-desc'); });
+                th.classList.add(isAsc ? 'sort-desc' : 'sort-asc');
+                const dir = isAsc ? -1 : 1;
+
+                rows.sort((a, b) => {
+                    const aCell = a.children[colIdx];
+                    const bCell = b.children[colIdx];
+                    if (!aCell || !bCell) return 0;
+                    const aText = aCell.textContent.trim();
+                    const bText = bCell.textContent.trim();
+                    const aNum = parseFloat(aText.replace(/[^0-9.\-]/g, ''));
+                    const bNum = parseFloat(bText.replace(/[^0-9.\-]/g, ''));
+                    if (!isNaN(aNum) && !isNaN(bNum)) return (aNum - bNum) * dir;
+                    return aText.localeCompare(bText) * dir;
+                });
+                rows.forEach(r => tbody.appendChild(r));
+            });
+        });
+    }
+
+    new MutationObserver(() => {
+        ['beTableBody', 'sensitivityTableBody', 'statsTableBody', 'statsCompareBody'].forEach(id => {
+            const tbody = document.getElementById(id);
+            if (!tbody || !tbody.children.length) return;
+            const table = tbody.closest('table');
+            if (!table || table.dataset.sortableInit) return;
+            table.dataset.sortableInit = '1';
+            makeSortable(table.id || id);
+        });
+    }).observe(document.querySelector('main') || document.body, { childList: true, subtree: true });
+
+    // ── Drag and Drop File Preview ──
+    function setupDropPreview(zoneId, inputId) {
+        const zone = document.getElementById(zoneId);
+        if (!zone) return;
+        let previewEl = zone.querySelector('.dropzone-file-preview');
+        if (!previewEl) {
+            previewEl = document.createElement('div');
+            previewEl.className = 'dropzone-file-preview';
+            zone.style.position = 'relative';
+            zone.appendChild(previewEl);
+        }
+        zone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const count = e.dataTransfer && e.dataTransfer.items ? e.dataTransfer.items.length : 0;
+            previewEl.textContent = count ? `${count} file${count > 1 ? 's' : ''}` : 'Drop files';
+        });
+        zone.addEventListener('dragleave', () => { previewEl.textContent = ''; });
+        zone.addEventListener('drop', () => { previewEl.textContent = ''; });
+    }
+    setupDropPreview('simRefDropZone', 'fileInputRef');
+    setupDropPreview('simTestDropZone', 'fileInputTest');
+    setupDropPreview('obsDropZone', 'obsFileInput');
+
+    // ── Collapse aria-expanded ──
+    document.querySelectorAll('[onclick*="toggleSection"]').forEach(btn => {
+        const bodyId = btn.getAttribute('onclick').match(/toggleSection\('([^']+)'/);
+        if (bodyId && bodyId[1]) {
+            const body = document.getElementById(bodyId[1]);
+            const isCollapsed = body && body.classList.contains('collapsed');
+            btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+            btn.setAttribute('aria-controls', bodyId[1]);
+        }
+    });
+    const origToggleSection = window.toggleSection;
+    if (typeof origToggleSection === 'function') {
+        window.toggleSection = function(bodyId, btnEl) {
+            origToggleSection(bodyId, btnEl);
+            const body = document.getElementById(bodyId);
+            if (body && btnEl) {
+                btnEl.setAttribute('aria-expanded', body.classList.contains('collapsed') ? 'false' : 'true');
+            }
+        };
     }

@@ -89,6 +89,7 @@
         }
 
         * { box-sizing: border-box; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -549,7 +550,7 @@
             content: '';
             position: absolute; left: 3px; top: 0px;
             width: 5px; height: 9px;
-            border: 2px solid #18181b; border-top: none; border-left: none;
+            border: 2px solid var(--accent-contrast); border-top: none; border-left: none;
             transform: rotate(43deg);
         }
         input[type="checkbox"]:focus { outline: none; box-shadow: 0 0 0 2px rgba(212,149,106,0.3); }
@@ -605,17 +606,249 @@
 
         .plot-panel-body {
             flex: 1 1 0;
-                height: 100%;
+            height: 100%;
             min-height: 0;
             overflow: hidden;
-                position: relative;
+            position: relative;
         }
 
         .plot-panel-canvas {
-                display: block;
+            display: block;
             width: 100%;
             height: 100%;
             min-height: 0;
+        }
+
+        /* ── Focus-visible for keyboard navigation ── */
+        button:focus-visible, select:focus-visible, a:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .tab-btn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+            box-shadow: 0 0 0 4px rgba(212,149,106,0.15);
+        }
+        .rail-btn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+        }
+
+        /* ── Button hover classes (replacing inline onmouseover) ── */
+        .btn-reset-hover {
+            color: var(--text-tertiary);
+            background: transparent;
+            border: 1px solid transparent;
+        }
+        .btn-reset-hover:hover {
+            color: #f87171;
+            border-color: rgba(248,113,113,0.2);
+            background: rgba(248,113,113,0.06);
+        }
+        .btn-select-all:hover {
+            color: var(--accent) !important;
+            border-color: rgba(212,149,106,0.3) !important;
+        }
+        .btn-select-none:hover {
+            color: var(--text-primary) !important;
+            border-color: var(--border-strong) !important;
+        }
+
+        /* ── Sortable table headers ── */
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+        th.sortable:hover {
+            background: var(--bg-raised) !important;
+        }
+        th.sortable::after {
+            content: '⇅';
+            opacity: 0.3;
+            margin-left: 4px;
+            font-size: 9px;
+        }
+        th.sortable.sort-asc::after {
+            content: '↑';
+            opacity: 0.8;
+        }
+        th.sortable.sort-desc::after {
+            content: '↓';
+            opacity: 0.8;
+        }
+
+        /* ── Sidebar collapse ── */
+        .lab-shell {
+            transition: width 0.25s ease, min-height 0.25s ease;
+        }
+        .lab-shell.sidebar-collapsed {
+            width: 44px !important;
+            min-width: 44px !important;
+        }
+        .lab-shell.sidebar-collapsed > .flex-1 {
+            display: none;
+        }
+        .sidebar-toggle-btn {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 1px solid var(--border-default);
+            background: var(--bg-raised);
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .sidebar-toggle-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-subtle);
+        }
+        .sidebar-collapsed .sidebar-toggle-btn svg {
+            transform: rotate(180deg);
+        }
+
+        /* ── Trial search ── */
+        .trial-search-input {
+            width: 100%;
+            background: var(--bg-base);
+            color: var(--text-primary);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            padding: 5px 8px 5px 28px;
+            transition: border-color 0.15s;
+        }
+        .trial-search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .trial-search-input::placeholder {
+            color: var(--text-tertiary);
+        }
+        .trial-search-wrap {
+            position: relative;
+        }
+        .trial-search-wrap svg {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-tertiary);
+            pointer-events: none;
+        }
+
+        /* ── Reset confirm overlay ── */
+        .reset-confirm-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(2px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s ease;
+        }
+        .reset-confirm-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .reset-confirm-dialog {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-default);
+            border-radius: var(--radius-lg);
+            padding: 20px 24px;
+            max-width: 340px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            transform: scale(0.95);
+            transition: transform 0.15s ease;
+        }
+        .reset-confirm-overlay.show .reset-confirm-dialog {
+            transform: scale(1);
+        }
+
+        /* ── Dropzone file preview ── */
+        .dropzone-file-preview {
+            position: absolute;
+            bottom: 4px;
+            left: 4px;
+            right: 4px;
+            font-size: 9px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 5px;
+            padding: 2px 6px;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .dropzone-active-sim .dropzone-file-preview,
+        .dropzone-active-obs .dropzone-file-preview {
+            opacity: 1;
+        }
+
+        /* ── Header responsive: export dropdown ── */
+        @media (max-width: 768px) {
+            .header-export-group .header-export-individual {
+                display: none !important;
+            }
+            .header-export-group .header-export-menu-btn {
+                display: flex !important;
+            }
+        }
+        .header-export-menu-btn {
+            display: none !important;
+            position: relative;
+        }
+        .header-export-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            z-index: 40;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-default);
+            border-radius: var(--radius-md);
+            box-shadow: 0 12px 36px rgba(0,0,0,0.35);
+            min-width: 180px;
+            padding: 4px;
+        }
+        .header-export-dropdown.show {
+            display: block;
+        }
+        .header-export-dropdown button {
+            width: 100%;
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: transparent;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        .header-export-dropdown button:hover {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+        }
+        .header-export-dropdown button:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
         }
 
         /* ── Light mode overrides ── */
