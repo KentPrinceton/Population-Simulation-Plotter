@@ -426,8 +426,10 @@
     addListener(obsFileInput, 'change', handleObsUpload);
     addListener(beRefTrialSelect, 'change', () => {
         if (beRefTrialSelect.value !== '') {
-            setReferenceTrial(beRefTrialSelect.value);
-            return;
+            beReferenceIndex = String(beRefTrialSelect.value);
+            if (beRefSummary && globalTrialsData && globalTrialsData.trials[beReferenceIndex]) {
+                beRefSummary.textContent = `Reference: ${getTrialLabel(globalTrialsData.trials[beReferenceIndex])}`;
+            }
         } else {
             beReferenceIndex = '';
             if (beRefSummary) {
@@ -436,12 +438,16 @@
         }
         renderTrialList();
         updateBERefSelect();
-        updateBEView();
+        hasReviewedResults = true;
+        beNeedsRerun = false;
+        updateBEView(true);
         saveSessionState();
     });
     addListener(beTestTrialSelect, 'change', () => {
         beTestIndex = beTestTrialSelect.value;
-        updateBEView();
+        hasReviewedResults = true;
+        beNeedsRerun = false;
+        updateBEView(true);
         saveSessionState();
     });
 
@@ -482,7 +488,6 @@
     }
 
     function handleBEMethodChange() {
-        // Method switches can invalidate previous test filters; force a safe re-sync.
         if (beTestTrialSelect) {
             beTestIndex = beTestTrialSelect.value;
         }
@@ -491,22 +496,13 @@
         }
         updateBERefSelect();
 
-        // Mark BE outputs stale and require explicit rerun.
-        hasReviewedResults = false;
-        beNeedsRerun = true;
+        hasReviewedResults = true;
+        beNeedsRerun = false;
+        globalBEData = [];
 
-        const beWarningMsg = document.getElementById('beWarningMsg');
-        if (beWarningMsg) {
-            beWarningMsg.textContent = 'BE method changed. Click "Run BE" to regenerate charts and table.';
-            beWarningMsg.classList.remove('hidden');
-        }
-
-        updateBEView();
+        updateBEView(true);
         updateFlowSetupState();
         saveSessionState();
-
-        // Notify user to rerun since method has changed
-        showStatusToast('BE Method changed. Click "Run BE" to update results and charts.', 'warn');
     }
 
     if (beMethodSelect) {
@@ -948,7 +944,9 @@
             beRefSummary.textContent = `Reference: ${getTrialLabel(globalTrialsData.trials[idx])}`;
         }
         renderTrialList();
-        updateBEView();
+        hasReviewedResults = true;
+        beNeedsRerun = false;
+        updateBEView(true);
         saveSessionState();
     }
 
