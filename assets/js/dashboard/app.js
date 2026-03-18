@@ -367,6 +367,11 @@
             csvLabel: 'Export Sensitivity Data',
             canExportPNG: () => !!globalTrialsData,
             canExportCSV: () => !!globalTrialsData
+        },
+        'view-global-sa': {
+            csvLabel: 'Export GSA Data',
+            canExportPNG: () => !!globalTrialsData,
+            canExportCSV: () => !!globalTrialsData
         }
     };
 
@@ -402,6 +407,9 @@
                 else vc.classList.add('view-hidden');
             });
 
+            // Update ARIA tab state
+            tabBtns.forEach(b => b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
+
             // Adjust exports based on view
             applyExportControlsForView(targetId);
 
@@ -418,8 +426,10 @@
     addListener(obsFileInput, 'change', handleObsUpload);
     addListener(beRefTrialSelect, 'change', () => {
         if (beRefTrialSelect.value !== '') {
-            setReferenceTrial(beRefTrialSelect.value);
-            return;
+            beReferenceIndex = String(beRefTrialSelect.value);
+            if (beRefSummary && globalTrialsData && globalTrialsData.trials[beReferenceIndex]) {
+                beRefSummary.textContent = `Reference: ${getTrialLabel(globalTrialsData.trials[beReferenceIndex])}`;
+            }
         } else {
             beReferenceIndex = '';
             if (beRefSummary) {
@@ -428,12 +438,16 @@
         }
         renderTrialList();
         updateBERefSelect();
-        updateBEView();
+        hasReviewedResults = true;
+        beNeedsRerun = false;
+        updateBEView(true);
         saveSessionState();
     });
     addListener(beTestTrialSelect, 'change', () => {
         beTestIndex = beTestTrialSelect.value;
-        updateBEView();
+        hasReviewedResults = true;
+        beNeedsRerun = false;
+        updateBEView(true);
         saveSessionState();
     });
 
@@ -474,7 +488,6 @@
     }
 
     function handleBEMethodChange() {
-        // Method switches can invalidate previous test filters; force a safe re-sync.
         if (beTestTrialSelect) {
             beTestIndex = beTestTrialSelect.value;
         }
@@ -483,22 +496,13 @@
         }
         updateBERefSelect();
 
-        // Mark BE outputs stale and require explicit rerun.
-        hasReviewedResults = false;
-        beNeedsRerun = true;
+        hasReviewedResults = true;
+        beNeedsRerun = false;
+        globalBEData = [];
 
-        const beWarningMsg = document.getElementById('beWarningMsg');
-        if (beWarningMsg) {
-            beWarningMsg.textContent = 'BE method changed. Click "Run BE" to regenerate charts and table.';
-            beWarningMsg.classList.remove('hidden');
-        }
-
-        updateBEView();
+        updateBEView(true);
         updateFlowSetupState();
         saveSessionState();
-
-        // Notify user to rerun since method has changed
-        showStatusToast('BE Method changed. Click "Run BE" to update results and charts.', 'warn');
     }
 
     if (beMethodSelect) {
@@ -592,17 +596,17 @@
 
     function updateRunStatBar() {
         const hasData = !!globalTrialsData || globalObsData.length > 0;
-        runStatBar.classList.toggle('hidden', !hasData);
+        if (runStatBar) runStatBar.classList.toggle('hidden', !hasData);
         if (!hasData) return;
 
         const activeTrials = globalTrialsData ? globalTrialsData.trials.filter(t => t.active).length : 0;
         const subjects = globalTrialsData ? globalTrialsData.totalSubjects : 0;
         const cmaxMean = computeActiveCmaxMean();
 
-        runStatSubjects.textContent = subjects;
-        runStatTrials.textContent = activeTrials;
-        runStatObs.textContent = globalObsData.length;
-        runStatCmax.textContent = Number.isFinite(cmaxMean) ? cmaxMean.toFixed(3) : '-';
+        if (runStatSubjects) runStatSubjects.textContent = subjects;
+        if (runStatTrials) runStatTrials.textContent = activeTrials;
+        if (runStatObs) runStatObs.textContent = globalObsData.length;
+        if (runStatCmax) runStatCmax.textContent = Number.isFinite(cmaxMean) ? cmaxMean.toFixed(3) : '-';
     }
 
     function setRailActive(activeBtn) {
@@ -783,8 +787,12 @@
                     obsConcContains: mapObsConcContains ? mapObsConcContains.value : columnMappingDefaults.obsConcContains
                 },
                 sensitivity: {
-                    endpoint: sensitivityEndpointSelect ? sensitivityEndpointSelect.value : 'Cmax',
-                    baseline: sensitivityBaselineSelect ? sensitivityBaselineSelect.value : 'auto'
+                    endpoint: sensitivityEndpointSelect
+                        ? (sensitivityEndpointSelect.dataset.pendingEndpoint || sensitivityEndpointSelect.value || 'Cmax')
+                        : 'Cmax',
+                    baseline: sensitivityBaselineSelect
+                        ? (sensitivityBaselineSelect.dataset.pendingValue || sensitivityBaselineSelect.value || 'auto')
+                        : 'auto'
                 }
             };
             localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
@@ -809,9 +817,8 @@
                 if (mapObsConcContains) mapObsConcContains.value = s.mapping.obsConcContains || columnMappingDefaults.obsConcContains;
             }
             if (s.sensitivity) {
-                const allowedEndpoints = ['Cmax', 'AUCt', 'AUCinf', 'Tmax', 'Fa', 'Fdp', 'F'];
-                if (sensitivityEndpointSelect && allowedEndpoints.includes(s.sensitivity.endpoint)) {
-                    sensitivityEndpointSelect.value = s.sensitivity.endpoint;
+                if (sensitivityEndpointSelect && s.sensitivity.endpoint) {
+                    sensitivityEndpointSelect.dataset.pendingEndpoint = s.sensitivity.endpoint;
                 }
                 if (sensitivityBaselineSelect && typeof s.sensitivity.baseline === 'string') {
                     sensitivityBaselineSelect.dataset.pendingValue = s.sensitivity.baseline;
@@ -932,12 +939,14 @@
         const idx = String(indexStr);
         if (!globalTrialsData.trials[idx]) return;
         beReferenceIndex = idx;
-        beRefTrialSelect.value = idx;
+        if (beRefTrialSelect) beRefTrialSelect.value = idx;
         if (beRefSummary) {
             beRefSummary.textContent = `Reference: ${getTrialLabel(globalTrialsData.trials[idx])}`;
         }
         renderTrialList();
-        updateBEView();
+        hasReviewedResults = true;
+        beNeedsRerun = false;
+        updateBEView(true);
         saveSessionState();
     }
 
@@ -970,12 +979,26 @@
     }
     
     // Graceful reset without reloading the page
-    addListener(btnReset, 'click', () => {
+    function performReset() {
         const hasLoadedData = !!globalTrialsData || globalObsData.length > 0;
-        if (hasLoadedData) {
-            const confirmed = window.confirm('Reset will clear all uploaded data, selected trials, and current analysis state. Continue?');
-            if (!confirmed) return;
+        if (!hasLoadedData) { doReset(); return; }
+        const overlay = document.getElementById('resetConfirmOverlay');
+        if (overlay) {
+            overlay.classList.add('show');
+            const cancelBtn = document.getElementById('btnResetCancel');
+            const confirmBtn = document.getElementById('btnResetConfirm');
+            const dismiss = () => { overlay.classList.remove('show'); };
+            const confirm = () => { dismiss(); doReset(); };
+            if (cancelBtn) { cancelBtn.onclick = dismiss; }
+            if (confirmBtn) { confirmBtn.onclick = confirm; }
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(); }, { once: true });
+        } else {
+            if (!window.confirm('Reset will clear all uploaded data, selected trials, and current analysis state. Continue?')) return;
+            doReset();
         }
+    }
+    addListener(btnReset, 'click', performReset);
+    function doReset() {
 
         // 1. Reset Global State
         globalTrialsData = null;
@@ -993,9 +1016,9 @@
         try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
 
         // 2. Clear File Inputs
-        fileInputRef.value = '';
-        fileInputTest.value = '';
-        obsFileInput.value = '';
+        if (fileInputRef) fileInputRef.value = '';
+        if (fileInputTest) fileInputTest.value = '';
+        if (obsFileInput) obsFileInput.value = '';
         simRefFileCount = 0;
         simTestFileCount = 0;
         obsFileCount = 0;
@@ -1003,17 +1026,17 @@
         updateObsFooter();
 
         // 3. Reset Sidebar & Top UI
-        trialSelectionPanel.classList.add('hidden');
+        if (trialSelectionPanel) trialSelectionPanel.classList.add('hidden');
         updateFlowSetupState();
-        trialList.innerHTML = '';
-        statSubjects.innerText = '0';
-        statTrials.innerText = '0';
-        statActiveTrials.innerText = '0';
-        beRefTrialSelect.innerHTML = '<option value="">-- Select Reference Trial --</option>';
+        if (trialList) trialList.innerHTML = '';
+        if (statSubjects) statSubjects.innerText = '0';
+        if (statTrials) statTrials.innerText = '0';
+        if (statActiveTrials) statActiveTrials.innerText = '0';
+        if (beRefTrialSelect) beRefTrialSelect.innerHTML = '<option value="">-- Select Reference Trial --</option>';
         if (beTestTrialSelect) beTestTrialSelect.innerHTML = '<option value="">All Test Trials</option>';
         if (beRefSummary) beRefSummary.textContent = 'Select a Reference formulation trial for BE.';
-        btnExportPNG.disabled = true;
-        btnExportCSV.disabled = true;
+        if (btnExportPNG) btnExportPNG.disabled = true;
+        if (btnExportCSV) btnExportCSV.disabled = true;
         if (beMethodSelect) beMethodSelect.value = 'simple';
 
         // 3b. Reset view controls to defaults
@@ -1033,7 +1056,10 @@
         if (targetConcUnitSelect) targetConcUnitSelect.value = 'ug/ml';
         if (inputXMax) inputXMax.value = '';
         if (inputYMax) inputYMax.value = '';
-        if (sensitivityEndpointSelect) sensitivityEndpointSelect.value = 'Cmax';
+        if (sensitivityEndpointSelect) {
+            sensitivityEndpointSelect.innerHTML = '<option value="Cmax">Cmax</option>';
+            sensitivityEndpointSelect.value = 'Cmax';
+        }
         if (sensitivityBaselineSelect) {
             sensitivityBaselineSelect.innerHTML = '<option value="auto">Auto (first active Reference / first active trial)</option>';
             sensitivityBaselineSelect.value = 'auto';
@@ -1046,28 +1072,42 @@
             Plotly.purge('plotlyChart');
             ['bePlotCmax', 'bePlotAUCinf', 'bePlotAUCt', 'bePlotConclusion'].forEach(id => Plotly.purge(id));
             Plotly.purge('sensitivityPlot');
+            try { Plotly.purge('gsaTornadoPlot'); Plotly.purge('gsaScatterPlot'); } catch(e2) {}
             Array.from(document.querySelectorAll('[id^="plotlyBox_"]')).forEach(el => Plotly.purge(el.id));
         } catch(e) {}
 
         // 5. Clear Grids & Tables
-        document.getElementById('statsTableBody').innerHTML = '';
-        document.getElementById('statsCompareBody').innerHTML = '';
-        document.getElementById('statsComparePanel').classList.add('hidden');
-        document.getElementById('statsTable').parentElement.classList.add('hidden');
-        document.getElementById('boxPlotsGrid').style.display = 'none';
-        document.getElementById('beContent').classList.add('hidden');
+        const _statsTableBody = document.getElementById('statsTableBody');
+        const _statsCompareBody = document.getElementById('statsCompareBody');
+        const _statsComparePanel = document.getElementById('statsComparePanel');
+        const _statsTable = document.getElementById('statsTable');
+        const _boxPlotsGrid = document.getElementById('boxPlotsGrid');
+        const _beContent = document.getElementById('beContent');
+        if (_statsTableBody) _statsTableBody.innerHTML = '';
+        if (_statsCompareBody) _statsCompareBody.innerHTML = '';
+        if (_statsComparePanel) _statsComparePanel.classList.add('hidden');
+        if (_statsTable && _statsTable.parentElement) _statsTable.parentElement.classList.add('hidden');
+        if (_boxPlotsGrid) _boxPlotsGrid.style.display = 'none';
+        if (_beContent) _beContent.classList.add('hidden');
         if (sensitivityContent) sensitivityContent.classList.add('hidden');
         if (sensitivityTableBody) sensitivityTableBody.innerHTML = '';
         if (sensitivitySummary) sensitivitySummary.textContent = '';
         if (sensitivityPlot) sensitivityPlot.innerHTML = '';
         if (sensitivityEmptyMsg) sensitivityEmptyMsg.classList.remove('hidden');
+        if (gsaContent) gsaContent.classList.add('hidden');
+        if (gsaTableBody) gsaTableBody.innerHTML = '';
+        if (gsaSummaryBar) gsaSummaryBar.textContent = '';
+        if (gsaEmptyMsg) gsaEmptyMsg.classList.remove('hidden');
         setBoxPlotLoadingState(false);
 
         // 6. Restore Empty States
-        emptyState.classList.remove('hidden');
-        document.getElementById('statsEmptyMsg').classList.remove('hidden');
-        document.getElementById('boxEmptyMsg').classList.remove('hidden');
-        document.getElementById('beEmptyMsg').classList.remove('hidden');
+        if (emptyState) emptyState.classList.remove('hidden');
+        const _statsEmptyMsg = document.getElementById('statsEmptyMsg');
+        const _boxEmptyMsg = document.getElementById('boxEmptyMsg');
+        const _beEmptyMsg = document.getElementById('beEmptyMsg');
+        if (_statsEmptyMsg) _statsEmptyMsg.classList.remove('hidden');
+        if (_boxEmptyMsg) _boxEmptyMsg.classList.remove('hidden');
+        if (_beEmptyMsg) _beEmptyMsg.classList.remove('hidden');
         const beNoParamsText = document.querySelector('#beNoParamsMsg p');
         if (beNoParamsText) beNoParamsText.textContent = 'No valid individual PK parameters found in the selected trials to compute BE.';
 
@@ -1087,9 +1127,9 @@
             if (vc.id === 'view-profile') vc.classList.remove('view-hidden');
             else vc.classList.add('view-hidden');
         });
-        txtExportCSV.innerText = 'Export Profile Data';
+        if (txtExportCSV) txtExportCSV.innerText = 'Export Profile Data';
         updateRunStatBar();
-    });
+    }
     
     const triggerVisualUpdate = () => { 
         if(currentTab === 'view-profile' && (globalTrialsData || globalObsData.length > 0)) updatePlot(); 
@@ -1243,6 +1283,11 @@
             if (sensPlot) {
                 Plotly.downloadImage(sensitivityPlotTarget.id, { format: 'png', width: 1200, height: 720, filename: `PopPK_${sensitivityPlotTarget.name}` });
             }
+        } else if (currentTab === 'view-global-sa') {
+            const gsaTornado = getRenderablePlotElement('gsaTornadoPlot');
+            const gsaScatter = getRenderablePlotElement('gsaScatterPlot');
+            if (gsaTornado) Plotly.downloadImage('gsaTornadoPlot', { format: 'png', width: 1200, height: 720, filename: 'PopPK_Global_SA_Tornado' });
+            if (gsaScatter) Plotly.downloadImage('gsaScatterPlot', { format: 'png', width: 1200, height: 720, filename: 'PopPK_Global_SA_Scatter' });
         }
     });
 
@@ -1257,6 +1302,8 @@
             exportBEDataToCSV();
         } else if (currentTab === 'view-sensitivity') {
             exportSensitivityToCSV();
+        } else if (currentTab === 'view-global-sa') {
+            exportGSAToCSV();
         } else {
             exportDataToCSV();
         }
@@ -1293,10 +1340,12 @@
                     const statsCSV = getStatsCSVContent();
                     const paramsCSV = getParamsCSVContent();
                     const sensitivityCSV = getSensitivityCSVContent();
+                    const gsaCSV = getGSACSVContent();
                     if (profileCSV) zip.file('GastroPlus_Aggregated_Profiles.csv', profileCSV);
                     if (statsCSV) zip.file('GastroPlus_Summary_Stats.csv', statsCSV);
                     if (paramsCSV) zip.file('GastroPlus_PK_Parameters.csv', paramsCSV);
                     if (sensitivityCSV) zip.file('GastroPlus_Sensitivity_Analysis.csv', sensitivityCSV);
+                    if (gsaCSV) zip.file('GastroPlus_Global_Sensitivity.csv', gsaCSV);
                 }
                 if (globalBEData.length > 0) {
                     const beCSV = getBECSVContent();
@@ -1398,6 +1447,7 @@
         if(currentTab === 'view-params') updateBoxPlots();
         if(currentTab === 'view-be') updateBEView();
         if(currentTab === 'view-sensitivity') updateSensitivityView();
+        if(currentTab === 'view-global-sa') updateGlobalSAView();
         updateStatsTable();
         updateRunStatBar();
     }
@@ -1410,7 +1460,7 @@
         activateTab('view-profile');
 
         showLoading(true);
-        emptyState.classList.add('hidden');
+        if (emptyState) emptyState.classList.add('hidden');
         if (formulationType === 'reference') simRefFileCount += files.length;
         else simTestFileCount += files.length;
         updateFileBadges();
@@ -1433,7 +1483,7 @@
             if (parsedFilesData.length > 0) {
                 processTrialsData(parsedFilesData);
             } else if (!globalTrialsData && globalObsData.length === 0) {
-                emptyState.classList.remove('hidden');
+                if (emptyState) emptyState.classList.remove('hidden');
             }
         } finally {
             showLoading(false);
@@ -1571,7 +1621,7 @@
         activateTab('view-profile');
 
         showLoading(true);
-        emptyState.classList.add('hidden');
+        if (emptyState) emptyState.classList.add('hidden');
         try {
             const settled = await Promise.allSettled(files.map(file => processObsFile(file)));
             const parsedObsData = [];
@@ -1595,7 +1645,7 @@
                 applyExportControlsForView(currentTab);
                 if(currentTab==='view-profile') updatePlot();
             } else if (!globalTrialsData && globalObsData.length === 0) {
-                emptyState.classList.remove('hidden');
+                if (emptyState) emptyState.classList.remove('hidden');
             }
         } finally {
             showLoading(false);
@@ -2079,14 +2129,22 @@
 
     function canonicalParamNameFromKey(key) {
         const n = normalizeParamToken(key);
-        if (!n) return null;
-        if (n === 'cmax' || n.startsWith('cmax') || n.includes('maxconcentration') || n.includes('peakconcentration')) return 'Cmax';
-        if (n.includes('auc0t') || n === 'auct' || n.startsWith('auct') || n.includes('auclast') || n.includes('auc0last') || n.includes('auctlast')) return 'AUCt';
-        if (n.includes('aucinf') || n.includes('auc0inf') || n.includes('aucinfinity')) return 'AUCinf';
-        if (n === 'tmax' || n.startsWith('tmax') || n.includes('timetomax') || n.includes('timetopeak')) return 'Tmax';
-        if (n === 'fdp' || n.startsWith('fdp')) return 'Fdp';
-        if (n === 'fa' || n.startsWith('fa')) return 'Fa';
-        if (n === 'f' || n.includes('bioavailability')) return 'F';
+        const nk = normalizeKey(key);
+        if (!n && !nk) return null;
+
+        if (n === 'cmax' || n.startsWith('cmax') || n.includes('maxconcentration') || n.includes('peakconcentration') || nk.includes('cmax')) return 'Cmax';
+
+        const aucTAliasesNK = ['auc(0-t)', 'auc 0-t', 'auc0-t', 'auct', 'auc(last)', 'auclast', 'auc last', 'auc0-last', 'auc(0-last)'];
+        if (aucTAliasesNK.some(a => nk.includes(a)) || n.includes('auc0t') || n === 'auct' || n.startsWith('auct') || n.includes('auclast') || n.includes('auc0last') || n.includes('auctlast')) return 'AUCt';
+
+        const aucInfAliasesNK = ['aucinf', 'auc inf', 'auc(inf)', 'auc0-inf', 'auc(0-inf)', 'auc infinity'];
+        if (aucInfAliasesNK.some(a => nk.includes(a)) || n.includes('aucinf') || n.includes('auc0inf') || n.includes('aucinfinity')) return 'AUCinf';
+
+        if (n === 'tmax' || n.startsWith('tmax') || n.includes('timetomax') || n.includes('timetopeak') || nk.includes('tmax')) return 'Tmax';
+
+        if (n === 'fdp' || nk === 'fdp' || nk.startsWith('fdp ') || nk.startsWith('fdp(') || nk.startsWith('fdp%') || nk.startsWith('fdp[') || nk.includes('fraction dissolved') || nk.includes('% dissolved')) return 'Fdp';
+        if (n === 'fa' || nk === 'fa' || nk.startsWith('fa ') || nk.startsWith('fa(') || nk.startsWith('fa%') || nk.startsWith('fa[') || nk.includes('fraction absorbed') || nk.includes('% absorbed')) return 'Fa';
+        if (n === 'f' || nk === 'f' || nk.startsWith('f ') || nk.startsWith('f(') || nk.startsWith('f%') || nk.startsWith('f[') || nk.includes('bioavailability')) return 'F';
         return null;
     }
 
@@ -2111,7 +2169,7 @@
         }
 
         if (paramType === 'AUCt') {
-            const aucTAliases = ['auc(0-t)', 'auc 0-t', 'auc0-t', 'auct', 'auc(last)', 'auclast', 'auc last', 'auc0-last'];
+            const aucTAliases = ['auc(0-t)', 'auc 0-t', 'auc0-t', 'auct', 'auc(last)', 'auc(0-last)', 'auclast', 'auc last', 'auc0-last'];
             const found = normalized.find(x => aucTAliases.some(a => x.n.includes(a)));
             return found ? found.raw : null;
         }
@@ -2131,18 +2189,35 @@
         }
 
         if (paramType === 'Fa') {
-            const found = tokenized.find(x => x.t === 'fa' || x.t.startsWith('fa'));
-            return found ? found.raw : null;
+            const faStartAliases = ['fa ', 'fa(', 'fa%', 'fa['];
+            const found = normalized.find(x => x.n === 'fa' || faStartAliases.some(a => x.n.startsWith(a)) || x.n.includes('fraction absorbed') || x.n.includes('% absorbed'));
+            if (found) return found.raw;
+            const faFallback = tokenized.find(x => x.t === 'fa');
+            return faFallback ? faFallback.raw : null;
         }
 
         if (paramType === 'Fdp') {
-            const found = tokenized.find(x => x.t === 'fdp' || x.t.startsWith('fdp'));
-            return found ? found.raw : null;
+            const fdpStartAliases = ['fdp ', 'fdp(', 'fdp%', 'fdp['];
+            const found = normalized.find(x => x.n === 'fdp' || fdpStartAliases.some(a => x.n.startsWith(a)) || x.n.includes('fraction dissolved') || x.n.includes('% dissolved'));
+            if (found) return found.raw;
+            const fdpFallback = tokenized.find(x => x.t === 'fdp');
+            return fdpFallback ? fdpFallback.raw : null;
         }
 
         if (paramType === 'F') {
-            const found = tokenized.find(x => x.t === 'f' || x.t.includes('bioavailability'));
-            return found ? found.raw : null;
+            const bioFound = normalized.find(x => x.n.includes('bioavailability'));
+            if (bioFound) return bioFound.raw;
+            const fStartAliases = ['f ', 'f(', 'f%', 'f['];
+            const found = normalized.find(x => x.n === 'f' || fStartAliases.some(a => x.n.startsWith(a)));
+            if (found) return found.raw;
+            const fFallback = tokenized.find(x => x.t === 'f');
+            return fFallback ? fFallback.raw : null;
+        }
+
+        const fallbackToken = normalizeParamToken(paramType);
+        if (fallbackToken) {
+            const found = tokenized.find(x => x.t === fallbackToken);
+            if (found) return found.raw;
         }
 
         return null;
@@ -2158,12 +2233,13 @@
             
             if (k.includes('endpoint') || k.includes('parameter')) stats.epName = String(val);
             else if (k === 'mean') stats.mean = val;
+            else if (k.includes('geom') && k.includes('cv')) stats.cv = val;
             else if (k.includes('cv') && !k.includes('geom')) stats.cv = val;
             else if (k === 'min') stats.min = val;
             else if (k === 'max') stats.max = val;
             else if (k.includes('geom') && !k.includes('cv')) stats.geom = val;
-            else if (k === '90% ci') stats.ci90 = val;
-            else if (k.includes('90% ci') && k.includes('ln')) stats.ci90ln = val; 
+            else if (k.includes('90% ci') && k.includes('ln')) stats.ci90ln = val;
+            else if (k.includes('90% ci')) stats.ci90 = val;
         }
         return stats;
     };
@@ -2214,20 +2290,21 @@
         return { pe, lower, upper };
     }
 
-    function extractParamDataWithDiagnostics(trial, paramType) {
+    function extractParamDataWithDiagnostics(trial, paramType, opts) {
         if (!trial || !trial.rawParams || trial.rawParams.length === 0) return { values: [], excluded: 0, keyFound: false };
         const keys = Object.keys(trial.rawParams[0]);
         const k = findParamKey(keys, paramType);
 
         if (!k) return { values: [], excluded: 0, keyFound: false };
 
+        const positiveOnly = opts && opts.positiveOnly;
         const values = [];
         let excluded = 0;
         trial.rawParams.forEach(row => {
             const v = parseNumericCell(row[k]);
             if (!Number.isFinite(v)) return;
-            if (v > 0) values.push(v);
-            else excluded += 1;
+            if (positiveOnly && v <= 0) { excluded += 1; return; }
+            values.push(v);
         });
 
         return { values, excluded, keyFound: true };
@@ -2301,7 +2378,7 @@
     function getVisibleBoxplotParams() {
         const params = getBoxplotParams();
         if (!boxResultsOnly) return params;
-        const resultTokens = new Set(['cmax', 'auct', 'aucinf', 'fa', 'f', 'fdp']);
+        const resultTokens = new Set(['cmax', 'auct', 'aucinf', 'tmax', 'fa', 'f', 'fdp']);
         return params.filter(p => {
             const canonicalId = String(p.id || '').toLowerCase();
             if (resultTokens.has(canonicalId)) return true;
@@ -2475,32 +2552,32 @@
                     hoverinfo: 'skip'
                 });
 
-                if (showContour100.checked) {
+                if (showContour100 && showContour100.checked) {
                     traces.push({ x: times, y: trial.stats.p100, type: 'scatter', mode: 'lines', line: { width: 1, color: `rgba(${rgb}, 0.5)`, dash: 'dot' }, legendgroup: legendGroup, name: `${displayName} (Max)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                     traces.push({ x: times, y: trial.stats.p00, type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: `rgba(${rgb}, 0.05)`, line: { width: 1, color: `rgba(${rgb}, 0.5)`, dash: 'dot' }, legendgroup: legendGroup, name: `${displayName} (Min)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                 }
                 
-                if (showContour95.checked) {
+                if (showContour95 && showContour95.checked) {
                     traces.push({ x: times, y: trial.stats.p975, type: 'scatter', mode: 'lines', line: { width: 1, color: `rgba(${rgb}, 0.6)`, dash: 'dash' }, legendgroup: legendGroup, name: `${displayName} (97.5th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                     traces.push({ x: times, y: trial.stats.p025, type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: `rgba(${rgb}, 0.1)`, line: { width: 1, color: `rgba(${rgb}, 0.6)`, dash: 'dash' }, legendgroup: legendGroup, name: `${displayName} (2.5th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                 }
 
-                if (showContour90.checked) {
+                if (showContour90 && showContour90.checked) {
                     traces.push({ x: times, y: trial.stats.p95, type: 'scatter', mode: 'lines', line: { width: 1.5, color: `rgba(${rgb}, 0.6)`, dash: 'dash' }, legendgroup: legendGroup, name: `${displayName} (95th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                     traces.push({ x: times, y: trial.stats.p05, type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: `rgba(${rgb}, 0.15)`, line: { width: 1.5, color: `rgba(${rgb}, 0.6)`, dash: 'dash' }, legendgroup: legendGroup, name: `${displayName} (5th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                 }
 
-                if (showContoursCheck.checked) {
+                if (showContoursCheck && showContoursCheck.checked) {
                     traces.push({ x: times, y: trial.stats.p75, type: 'scatter', mode: 'lines', line: { width: 0, color: 'transparent' }, legendgroup: legendGroup, name: `${displayName} (75th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                     traces.push({ x: times, y: trial.stats.p25, type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: `rgba(${rgb}, 0.25)`, line: { width: 0, color: 'transparent' }, legendgroup: legendGroup, name: `${displayName} (25th Perc)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                 }
 
-                if (showCIMean.checked) {
+                if (showCIMean && showCIMean.checked) {
                     traces.push({ x: times, y: trial.stats.upperCI, type: 'scatter', mode: 'lines', line: { width: 0, color: 'transparent' }, legendgroup: legendGroup, name: `${displayName} (Upper 90% CI)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                     traces.push({ x: times, y: trial.stats.lowerCI, type: 'scatter', mode: 'lines', fill: 'tonexty', fillcolor: `rgba(${rgb}, 0.25)`, line: { width: 0, color: 'transparent' }, legendgroup: legendGroup, name: `${displayName} (Lower 90% CI)`, showlegend: false, hoverinfo: 'skip', connectgaps: true });
                 }
 
-                if (showIndividualsCheck.checked) {
+                if (showIndividualsCheck && showIndividualsCheck.checked) {
                     const opacity = Math.max(0.1, Math.min(0.4, 4 / trial.subjectCount)).toFixed(3);
                     const maxIndividualTraces = 250;
                     const step = trial.subjectCount > maxIndividualTraces ? Math.ceil(trial.subjectCount / maxIndividualTraces) : 1;
@@ -2515,7 +2592,7 @@
                     }
                 }
 
-                if (showMedian.checked) {
+                if (showMedian && showMedian.checked) {
                     traces.push({
                         x: times, y: trial.stats.medians, type: 'scatter', mode: 'lines',
                         line: { color: hex, width: 2, dash: 'dash', shape: 'spline', smoothing: 0.4 },
@@ -2525,7 +2602,7 @@
                     });
                 }
 
-                if (showMean.checked) {
+                if (showMean && showMean.checked) {
                     traces.push({
                         x: times, y: trial.stats.means, type: 'scatter', mode: 'lines',
                         line: { color: hex, width: 3, shape: 'spline', smoothing: 0.45 },
@@ -2534,14 +2611,14 @@
                         hovertemplate: `${displayName} Mean<br>Time: %{x:.2f} h<br>Conc: %{y:.4g}<extra></extra>`
                     });
                 }
-
-                if (showContour100.checked) overlayFlags.push('100%');
-                if (showContour95.checked) overlayFlags.push('95%');
-                if (showContour90.checked) overlayFlags.push('90%');
-                if (showContoursCheck.checked) overlayFlags.push('50%');
-                if (showCIMean.checked) overlayFlags.push('CI');
-                if (showIndividualsCheck.checked) overlayFlags.push('Individuals');
             });
+
+            if (showContour100 && showContour100.checked) overlayFlags.push('100%');
+            if (showContour95 && showContour95.checked) overlayFlags.push('95%');
+            if (showContour90 && showContour90.checked) overlayFlags.push('90%');
+            if (showContoursCheck && showContoursCheck.checked) overlayFlags.push('50%');
+            if (showCIMean && showCIMean.checked) overlayFlags.push('CI');
+            if (showIndividualsCheck && showIndividualsCheck.checked) overlayFlags.push('Individuals');
         }
 
         if (globalObsData.length > 0) {
@@ -2555,8 +2632,8 @@
             });
         }
 
-        const xMax = parseFloat(inputXMax.value);
-        const yMax = parseFloat(inputYMax.value);
+        const xMax = inputXMax ? parseFloat(inputXMax.value) : NaN;
+        const yMax = inputYMax ? parseFloat(inputYMax.value) : NaN;
         
         let minPositiveY = Infinity;
         traces.forEach(trace => {
@@ -2604,14 +2681,14 @@
             font: { family: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', color: plotTheme.font },
             hoverlabel: { font: { family: 'inherit', size: 13 }, bgcolor: plotTheme.hoverBg, bordercolor: plotTheme.hoverBorder, namelength: -1 },
             xaxis: { 
-                title: { text: inputXTitle.value || 'Time (h)', font: { size: 13, color: plotTheme.title } }, 
+                title: { text: (inputXTitle && inputXTitle.value) || 'Time (h)', font: { size: 13, color: plotTheme.title } }, 
                 gridcolor: plotTheme.grid, zerolinecolor: plotTheme.zeroline,
                 showline: true, linecolor: plotTheme.axisline, linewidth: 1, mirror: true, ticks: 'outside', tickcolor: plotTheme.tick, tickfont: { color: plotTheme.font },
                 showspikes: true, spikecolor: plotTheme.tick, spikethickness: 1, spikemode: 'across', spikesnap: 'cursor',
                 range: !isNaN(xMax) ? [0, xMax] : undefined, autorange: isNaN(xMax) 
             },
             yaxis: { 
-                title: { text: inputYTitle.value || 'Concentration (ug/mL)', font: { size: 13, color: plotTheme.title } }, 
+                title: { text: (inputYTitle && inputYTitle.value) || 'Concentration (ug/mL)', font: { size: 13, color: plotTheme.title } }, 
                 gridcolor: plotTheme.grid, zerolinecolor: plotTheme.zeroline,
                 showline: true, linecolor: plotTheme.axisline, linewidth: 1, mirror: true, ticks: 'outside', tickcolor: plotTheme.tick, tickfont: { color: plotTheme.font },
                 showspikes: true, spikecolor: plotTheme.tick, spikethickness: 1, spikemode: 'across', spikesnap: 'cursor',
@@ -2632,13 +2709,22 @@
         });
     }
 
+    function extractParamUnit(rawKey) {
+        if (!rawKey) return '';
+        const parenMatch = rawKey.match(/\(([^)]+)\)\s*$/);
+        if (parenMatch) return parenMatch[1].trim();
+        const bracketMatch = rawKey.match(/\[([^\]]+)\]\s*$/);
+        if (bracketMatch) return bracketMatch[1].trim();
+        return '';
+    }
+
     // -- Plotting Logic: Boxplots (Grid) --
     function renderBoxPlot(targetDiv, paramType) {
         if (!globalTrialsData) return;
         const traces = [];
         let dataFound = false;
+        let detectedUnit = '';
         const paramLabel = typeof paramType === 'string' ? paramType : (paramType && paramType.label ? paramType.label : 'Parameter');
-        const axisLabel = shortenAxisLabel(paramLabel, 22);
 
         globalTrialsData.trials.forEach((trial, index) => {
             if (!trial.active || !trial.rawParams || trial.rawParams.length === 0) return;
@@ -2650,6 +2736,7 @@
             
             if (!targetKey) return;
             dataFound = true;
+            if (!detectedUnit) detectedUnit = extractParamUnit(targetKey);
 
             const paramValues = [];
             trial.rawParams.forEach(row => {
@@ -2693,6 +2780,9 @@
         targetEl.innerHTML = '';
         const plotHeight = getPlotPanelCanvasHeight(targetEl);
         targetEl.style.height = `${plotHeight}px`;
+
+        const fullLabel = detectedUnit ? `${paramLabel} (${detectedUnit})` : paramLabel;
+        const axisLabel = shortenAxisLabel(fullLabel, 30);
 
         const plotTheme = getPlotTheme();
         const layout = {
@@ -2864,17 +2954,19 @@
         // globalBEData = []; // Clear previous exports - MOVED to runBEAnalysis to preserve results when switching views or methods
         const isRerunPromptState = beNeedsRerun && !hasReviewedResults && !forceRun;
         if (isRerunPromptState) {
-            beWarningMsg.textContent = 'BE method changed. Click "Run BE" to regenerate charts and table.';
-            beWarningMsg.classList.remove('hidden');
-        } else {
+            if (beWarningMsg) {
+                beWarningMsg.textContent = 'BE method changed. Click "Run BE" to regenerate charts and table.';
+                beWarningMsg.classList.remove('hidden');
+            }
+        } else if (beWarningMsg) {
             beWarningMsg.classList.add('hidden');
             beWarningMsg.textContent = '';
         }
 
         if (!hasReviewedResults && !forceRun) {
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.remove('hidden');
-            beNoParamsMsg.classList.add('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.remove('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.add('hidden');
             if (beNeedsRerun && beEmptyText) {
                 beEmptyText.textContent = 'Method changed. Click "Run BE" to regenerate results.';
             }
@@ -2897,9 +2989,9 @@
         }
 
         if (!globalTrialsData) {
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.remove('hidden');
-            beNoParamsMsg.classList.add('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.remove('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.add('hidden');
             if (beRefSummary) beRefSummary.textContent = 'Select a Reference formulation trial for BE.';
             return;
         }
@@ -2914,9 +3006,9 @@
 
         const resolvedRefIdx = beReferenceIndex !== '' ? String(beReferenceIndex) : '';
         if (!isPairedTrialNumberMode && (resolvedRefIdx === "" || !globalTrialsData.trials[resolvedRefIdx])) {
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.remove('hidden');
-            beNoParamsMsg.classList.add('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.remove('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.add('hidden');
             if (beRefSummary) beRefSummary.textContent = 'Select a Reference formulation trial for BE.';
             return;
         }
@@ -3002,16 +3094,17 @@
             const testTrials = globalTrialsData.trials.filter((t, i) => {
                 const isTestFormulation = t.formulationType === 'test';
                 const isActive = !!t.active;
+                const hasParams = !!(t.rawParams && t.rawParams.length > 0);
                 const selectedTestMatch = testIdx === '' ? true : String(i) === testIdx;
-                return isTestFormulation && isActive && selectedTestMatch;
+                return isTestFormulation && isActive && hasParams && selectedTestMatch;
             });
             comparisonPairs = testTrials.map(t => ({ refTrial, testTrial: t, label: getTrialLabel(t) }));
         }
 
         if (comparisonPairs.length === 0) {
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.add('hidden');
-            beNoParamsMsg.classList.remove('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.add('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.remove('hidden');
             if (beNoParamsText) {
                 beNoParamsText.textContent = isPairedTrialNumberMode
                     ? 'No matched active trial numbers found between Reference and Test trials. Keep both formulations active for the same trial numbers.'
@@ -3021,9 +3114,9 @@
         }
 
         if (!isPairedTrialNumberMode && (!refTrial.rawParams || refTrial.rawParams.length === 0)) {
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.add('hidden');
-            beNoParamsMsg.classList.remove('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.add('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.remove('hidden');
             if (beNoParamsText) beNoParamsText.textContent = 'Selected Reference trial has no valid PK parameter rows for BE computation.';
             return;
         }
@@ -3051,8 +3144,8 @@
             const markerSymbols = [];
             
             parameters.slice().reverse().forEach(param => {
-                const refDiag = extractParamDataWithDiagnostics(refTrialInPair, param);
-                const testDiag = extractParamDataWithDiagnostics(testTrial, param);
+                const refDiag = extractParamDataWithDiagnostics(refTrialInPair, param, { positiveOnly: true });
+                const testDiag = extractParamDataWithDiagnostics(testTrial, param, { positiveOnly: true });
                 const refVals = refDiag.values;
                 const testVals = testDiag.values;
                 excludedCount += refDiag.excluded + testDiag.excluded;
@@ -3132,18 +3225,18 @@
 
         if(!hasValidData) {
             globalBEData = [];
-            beContent.classList.add('hidden');
-            beEmptyMsg.classList.add('hidden');
-            beNoParamsMsg.classList.remove('hidden');
+            if (beContent) beContent.classList.add('hidden');
+            if (beEmptyMsg) beEmptyMsg.classList.add('hidden');
+            if (beNoParamsMsg) beNoParamsMsg.classList.remove('hidden');
             if (beNoParamsText) beNoParamsText.textContent = 'No valid individual PK parameters found in the selected trials to compute BE.';
             return;
         }
 
         globalBEData = beExportRows;
 
-        beContent.classList.remove('hidden');
-        beEmptyMsg.classList.add('hidden');
-        beNoParamsMsg.classList.add('hidden');
+        if (beContent) beContent.classList.remove('hidden');
+        if (beEmptyMsg) beEmptyMsg.classList.add('hidden');
+        if (beNoParamsMsg) beNoParamsMsg.classList.add('hidden');
 
         const paramOrder = { Cmax: 0, AUCt: 1, AUCinf: 2 };
         const orderedTableRows = beTableRows.slice().sort((a, b) => {
@@ -3168,8 +3261,8 @@
                 <td class="px-5 py-2.5 whitespace-nowrap text-sm text-right" style="color:${row.isUpperFail ? '#f87171' : 'var(--text-secondary)'}; font-weight:${row.isUpperFail ? '700' : '400'}">${row.upperText}</td>
                 <td class="px-5 py-2.5 whitespace-nowrap text-center">
                     ${row.isBE
-                        ? '<span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.25);padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;">Pass</span>'
-                        : '<span style="background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.25);padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;">Fail</span>'}
+                        ? '<span style="background:rgba(74,222,128,0.1);color:#4ade80;border:1px solid rgba(74,222,128,0.25);padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Pass</span>'
+                        : '<span style="background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.25);padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:3px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Fail</span>'}
                 </td>
             `;
             tbody.appendChild(tr);
@@ -3181,7 +3274,7 @@
             if (bePairingDetail) bePairingDetail.textContent = pairingDetailText;
         }
 
-        if (excludedCount > 0) {
+        if (excludedCount > 0 && beWarningMsg) {
             beWarningMsg.textContent = `${excludedCount} non-positive PK values were excluded from log-transformed BE calculations.`;
             beWarningMsg.classList.remove('hidden');
         }
@@ -3372,8 +3465,9 @@
         }
     }
 
-    function buildSensitivityDataset(paramTypeInput) {
+    function buildSensitivityDataset(paramTypeInput, opts) {
         const paramType = String(paramTypeInput || 'Cmax');
+        const skipDomUpdate = opts && opts.skipDomUpdate;
         if (!globalTrialsData || !Array.isArray(globalTrialsData.trials)) {
             return { rows: [], reason: 'Upload simulation files to run sensitivity analysis.' };
         }
@@ -3386,6 +3480,9 @@
             const values = extractParamData(trial, paramType);
             if (!values.length) return null;
             const mean = values.reduce((a, b) => a + b, 0) / values.length;
+            const variance = values.length > 1 ? values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (values.length - 1) : 0;
+            const sd = Math.sqrt(variance);
+            const cv = mean !== 0 ? (sd / Math.abs(mean)) * 100 : null;
             return {
                 index,
                 trial,
@@ -3393,11 +3490,13 @@
                 trialNumber: trial.trialNumber,
                 formulationType: trial.formulationType === 'reference' ? 'reference' : 'test',
                 mean,
+                sd,
+                cv,
                 n: values.length
             };
         }).filter(Boolean);
 
-        if (sensitivityBaselineSelect) {
+        if (sensitivityBaselineSelect && !skipDomUpdate) {
             const desiredValue = sensitivityBaselineSelect.dataset.pendingValue || sensitivityBaselineSelect.value || 'auto';
             sensitivityBaselineSelect.innerHTML = '<option value="auto">Auto (first active Reference / first active trial)</option>';
             populated.forEach(row => {
@@ -3449,9 +3548,35 @@
         };
     }
 
+    function populateSensitivityEndpoints() {
+        if (!sensitivityEndpointSelect) return;
+        const pendingEndpoint = sensitivityEndpointSelect.dataset.pendingEndpoint;
+        const prevValue = pendingEndpoint || sensitivityEndpointSelect.value || 'Cmax';
+        delete sensitivityEndpointSelect.dataset.pendingEndpoint;
+
+        const params = getBoxplotParams();
+        if (!params.length) {
+            sensitivityEndpointSelect.innerHTML = '<option value="Cmax">Cmax</option>';
+            sensitivityEndpointSelect.value = 'Cmax';
+            return;
+        }
+
+        sensitivityEndpointSelect.innerHTML = '';
+        params.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.label;
+            opt.textContent = p.label;
+            sensitivityEndpointSelect.appendChild(opt);
+        });
+
+        const hasOld = Array.from(sensitivityEndpointSelect.options).some(o => o.value === prevValue);
+        sensitivityEndpointSelect.value = hasOld ? prevValue : (sensitivityEndpointSelect.options[0] ? sensitivityEndpointSelect.options[0].value : 'Cmax');
+    }
+
     function updateSensitivityView() {
         if (!sensitivityContent || !sensitivityEmptyMsg || !sensitivityPlot || !sensitivityTableBody || !sensitivitySummary) return;
 
+        populateSensitivityEndpoints();
         const endpoint = sensitivityEndpointSelect ? sensitivityEndpointSelect.value : 'Cmax';
         const data = buildSensitivityDataset(endpoint);
         sensitivityRowsCache = data.rows || [];
@@ -3476,6 +3601,7 @@
         sensitivityTableBody.innerHTML = data.rows.map(row => {
             const delta = Number.isFinite(row.deltaPct) ? row.deltaPct.toFixed(2) : '-';
             const absDelta = Number.isFinite(row.absDeltaPct) ? row.absDeltaPct.toFixed(2) : '-';
+            const cvStr = Number.isFinite(row.cv) ? row.cv.toFixed(1) + '%' : '-';
             const deltaColor = row.isBaseline ? 'var(--accent)' : (row.deltaPct >= 0 ? '#4ade80' : '#f87171');
             const trialType = row.formulationType === 'reference' ? 'REF' : 'TEST';
             return `
@@ -3485,6 +3611,7 @@
                     </td>
                     <td class="px-4 py-2 text-xs" style="color:var(--text-secondary)">${trialType}</td>
                     <td class="px-4 py-2 text-sm text-right" style="color:var(--text-primary);font-variant-numeric:tabular-nums">${row.mean.toFixed(4)}</td>
+                    <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${cvStr}</td>
                     <td class="px-4 py-2 text-sm text-right" style="color:${deltaColor};font-weight:${row.isBaseline ? '700' : '600'};font-variant-numeric:tabular-nums">${delta}</td>
                     <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${absDelta}</td>
                 </tr>
@@ -3515,7 +3642,13 @@
             },
             text: plotRows.map(r => Number.isFinite(r.deltaPct) ? `${r.deltaPct.toFixed(2)}%` : ''),
             textposition: 'auto',
-            hovertemplate: '%{y}<br>Delta: %{x:.2f}%<extra></extra>'
+            customdata: plotRows.map(r => [
+                r.mean ? r.mean.toFixed(4) : '-',
+                Number.isFinite(r.cv) ? r.cv.toFixed(1) + '%' : '-',
+                Number.isFinite(r.sd) ? r.sd.toFixed(4) : '-',
+                r.n || 0
+            ]),
+            hovertemplate: '%{y}<br>Δ: %{x:.2f}%<br>Mean: %{customdata[0]}<br>CV: %{customdata[1]}<br>SD: %{customdata[2]}<br>n: %{customdata[3]}<extra></extra>'
         };
 
         const maxAbs = plotRows.reduce((m, r) => Math.max(m, Math.abs(r.deltaPct)), 0);
@@ -3748,8 +3881,7 @@
             if (!trial.active || !trial.rawParams || trial.rawParams.length === 0) return;
             
             const paramKeys = Object.keys(trial.rawParams[0]);
-            const targets = ['cmax', 'auc'];
-            const validKeys = paramKeys.filter(k => k && targets.some(t => k.toLowerCase().includes(t)));
+            const validKeys = paramKeys.filter(k => k && !isLikelyMetadataParam(k) && paramHasFiniteValues(trial, k));
 
             trial.rawParams.forEach((row, i) => {
                 validKeys.forEach(k => {
@@ -3771,8 +3903,13 @@
 
     function getBECSVContent() {
         if (globalBEData.length === 0) return null;
-        const header = ['Parameter', 'Test_Trial', 'Reference_Trial', 'Point_Estimate_Percent', 'Lower_90_CI', 'Upper_90_CI', 'Status'];
-        const rows = globalBEData.map(row => [row.param, row.testTrial, row.refTrial, row.pe, row.lower, row.upper, row.status]);
+        const hasPairs = globalBEData.some(row => row.pair);
+        const header = hasPairs
+            ? ['Parameter', 'Test_Trial', 'Reference_Trial', 'Pair', 'Point_Estimate_Percent', 'Lower_90_CI', 'Upper_90_CI', 'Status']
+            : ['Parameter', 'Test_Trial', 'Reference_Trial', 'Point_Estimate_Percent', 'Lower_90_CI', 'Upper_90_CI', 'Status'];
+        const rows = globalBEData.map(row => hasPairs
+            ? [row.param, row.testTrial, row.refTrial, row.pair || '', row.pe, row.lower, row.upper, row.status]
+            : [row.param, row.testTrial, row.refTrial, row.pe, row.lower, row.upper, row.status]);
         return `${buildExportMetadata('Bioequivalence')}\n${toCSVRow(header)}\n${rows.map(toCSVRow).join('\n')}\n`;
     }
 
@@ -3784,8 +3921,10 @@
 
     function getSensitivityCSVContent() {
         if (!globalTrialsData) return null;
-        const endpoint = sensitivityEndpointSelect ? sensitivityEndpointSelect.value : 'Cmax';
-        const data = buildSensitivityDataset(endpoint);
+        const endpoint = sensitivityEndpointSelect
+            ? (sensitivityEndpointSelect.dataset.pendingEndpoint || sensitivityEndpointSelect.value || 'Cmax')
+            : 'Cmax';
+        const data = buildSensitivityDataset(endpoint, { skipDomUpdate: true });
         if (!data.rows || data.rows.length < 2) return null;
 
         const header = ['Trial_Number', 'Trial_Label', 'Type', 'Endpoint', 'Mean', 'Baseline_Trial', 'Baseline_Mean', 'Delta_Percent', 'Absolute_Delta_Percent'];
@@ -3806,6 +3945,32 @@
     function exportSensitivityToCSV(filename = "GastroPlus_Sensitivity_Analysis.csv") {
         const csvContent = getSensitivityCSVContent();
         if (!csvContent) return;
+        downloadCSV(csvContent, filename);
+    }
+
+    function getGSACSVContent() {
+        if (!globalTrialsData) return null;
+        const outputParam = gsaOutputSelect ? gsaOutputSelect.value : 'Cmax';
+        const data = computeGSA(outputParam);
+        if (!data || !data.results || data.results.length === 0) return null;
+
+        const header = ['Input_Parameter', 'Spearman_Rho', 'Abs_Rho', 'P_Value', 'N', 'Significant_0.05', 'Output_Parameter', 'Pooled_Subjects'];
+        const rows = data.results.map(r => [
+            r.label,
+            r.rho.toFixed(6),
+            r.absRho.toFixed(6),
+            r.pValue.toFixed(6),
+            r.n,
+            r.pValue < 0.05 ? 'Yes' : 'No',
+            data.outputLabel,
+            data.n
+        ]);
+        return `${buildExportMetadata('Global Sensitivity Analysis')}\n${toCSVRow(header)}\n${rows.map(toCSVRow).join('\n')}${rows.length ? '\n' : ''}`;
+    }
+
+    function exportGSAToCSV(filename = "GastroPlus_Global_Sensitivity.csv") {
+        const csvContent = getGSACSVContent();
+        if (!csvContent) { showStatusToast('Run the Global SA analysis first before exporting.', 'warn'); return; }
         downloadCSV(csvContent, filename);
     }
 
@@ -3859,7 +4024,7 @@
 
     function showLoading(isVisible) {
         if (isVisible) {
-            loadingSpinner.classList.remove('hidden');
+            if (loadingSpinner) loadingSpinner.classList.remove('hidden');
             if (loadingOverlay) {
                 loadingOverlay.classList.remove('hidden');
                 loadingOverlay.classList.add('flex');
@@ -3867,11 +4032,528 @@
             if (emptyState) emptyState.classList.add('hidden');
             document.body.classList.add('cursor-progress');
         } else {
-            loadingSpinner.classList.add('hidden');
+            if (loadingSpinner) loadingSpinner.classList.add('hidden');
             if (loadingOverlay) {
                 loadingOverlay.classList.add('hidden');
                 loadingOverlay.classList.remove('flex');
             }
             document.body.classList.remove('cursor-progress');
         }
+    }
+
+    // ── Sidebar Collapse Toggle ──
+    const sidebarEl = document.querySelector('.lab-shell');
+    const sidebarToggleBtn = document.getElementById('btnSidebarToggle');
+    if (sidebarToggleBtn && sidebarEl) {
+        sidebarToggleBtn.addEventListener('click', () => {
+            sidebarEl.classList.toggle('sidebar-collapsed');
+            setTimeout(() => {
+                if (currentTab === 'view-profile') updatePlot();
+                window.dispatchEvent(new Event('resize'));
+            }, 300);
+        });
+    }
+
+    // ── Trial Search/Filter ──
+    const trialSearchInput = document.getElementById('trialSearchInput');
+    if (trialSearchInput) {
+        trialSearchInput.addEventListener('input', () => {
+            const query = trialSearchInput.value.toLowerCase().trim();
+            const rows = document.querySelectorAll('#trialList .trial-row');
+            rows.forEach(row => {
+                if (!query) { row.style.display = ''; return; }
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        });
+    }
+
+    // ── ARIA: Update tab aria-selected on switch ──
+    function updateTabAria(targetId) {
+        tabBtns.forEach(btn => {
+            const isActive = btn.getAttribute('data-target') === targetId;
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+    }
+
+    // ── Keyboard Shortcuts ──
+    document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+        const tabTargets = ['view-profile', 'view-params', 'view-be', 'view-stats', 'view-sensitivity', 'view-global-sa'];
+        if (e.key >= '1' && e.key <= '6') {
+            e.preventDefault();
+            activateTab(tabTargets[parseInt(e.key) - 1]);
+            return;
+        }
+        if (e.key === 'l' || e.key === 'L') {
+            e.preventDefault();
+            const logBtn = document.getElementById(isLogScale ? 'btnScaleLinear' : 'btnScaleLog');
+            if (logBtn) logBtn.click();
+            return;
+        }
+    });
+
+    // ── Export Dropdown (mobile) ──
+    const btnExportMenu = document.getElementById('btnExportMenu');
+    const exportDropdown = document.getElementById('exportDropdown');
+    if (btnExportMenu && exportDropdown) {
+        btnExportMenu.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = exportDropdown.classList.toggle('show');
+            btnExportMenu.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+        document.addEventListener('click', () => {
+            exportDropdown.classList.remove('show');
+            btnExportMenu.setAttribute('aria-expanded', 'false');
+        });
+        const mobileBundle = document.getElementById('btnExportBundleMobile');
+        const mobileCSV = document.getElementById('btnExportCSVMobile');
+        const mobilePNG = document.getElementById('btnExportPNGMobile');
+        if (mobileBundle) mobileBundle.addEventListener('click', () => { if (btnExportBundle && !btnExportBundle.disabled) btnExportBundle.click(); });
+        if (mobileCSV) mobileCSV.addEventListener('click', () => { if (btnExportCSV && !btnExportCSV.disabled) btnExportCSV.click(); });
+        if (mobilePNG) mobilePNG.addEventListener('click', () => { if (btnExportPNG && !btnExportPNG.disabled) btnExportPNG.click(); });
+
+        new MutationObserver(() => {
+            if (mobileBundle) mobileBundle.disabled = !!(btnExportBundle && btnExportBundle.disabled);
+            if (mobileCSV) mobileCSV.disabled = !!(btnExportCSV && btnExportCSV.disabled);
+            if (mobilePNG) mobilePNG.disabled = !!(btnExportPNG && btnExportPNG.disabled);
+        }).observe(document.querySelector('.header-export-group'), { attributes: true, subtree: true, attributeFilter: ['disabled'] });
+    }
+
+    // ── Sortable Tables ──
+    function makeSortable(tableId) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        const thead = table.querySelector('thead');
+        if (!thead) return;
+        const ths = thead.querySelectorAll('th');
+        ths.forEach((th, colIdx) => {
+            th.classList.add('sortable');
+            th.addEventListener('click', () => {
+                const tbody = table.querySelector('tbody');
+                if (!tbody) return;
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                if (rows.length < 2) return;
+
+                const isAsc = th.classList.contains('sort-asc');
+                ths.forEach(h => { h.classList.remove('sort-asc', 'sort-desc'); });
+                th.classList.add(isAsc ? 'sort-desc' : 'sort-asc');
+                const dir = isAsc ? -1 : 1;
+
+                rows.sort((a, b) => {
+                    const aCell = a.children[colIdx];
+                    const bCell = b.children[colIdx];
+                    if (!aCell || !bCell) return 0;
+                    const aText = aCell.textContent.trim();
+                    const bText = bCell.textContent.trim();
+                    const aNum = parseFloat(aText.replace(/[^0-9.\-]/g, ''));
+                    const bNum = parseFloat(bText.replace(/[^0-9.\-]/g, ''));
+                    if (!isNaN(aNum) && !isNaN(bNum)) return (aNum - bNum) * dir;
+                    return aText.localeCompare(bText) * dir;
+                });
+                rows.forEach(r => tbody.appendChild(r));
+            });
+        });
+    }
+
+    new MutationObserver(() => {
+        ['beTableBody', 'sensitivityTableBody', 'statsTableBody', 'statsCompareBody'].forEach(id => {
+            const tbody = document.getElementById(id);
+            if (!tbody || !tbody.children.length) return;
+            const table = tbody.closest('table');
+            if (!table || table.dataset.sortableInit) return;
+            table.dataset.sortableInit = '1';
+            makeSortable(table.id || id);
+        });
+    }).observe(document.querySelector('main') || document.body, { childList: true, subtree: true });
+
+    // ── Drag and Drop File Preview ──
+    function setupDropPreview(zoneId, inputId) {
+        const zone = document.getElementById(zoneId);
+        if (!zone) return;
+        let previewEl = zone.querySelector('.dropzone-file-preview');
+        if (!previewEl) {
+            previewEl = document.createElement('div');
+            previewEl.className = 'dropzone-file-preview';
+            zone.style.position = 'relative';
+            zone.appendChild(previewEl);
+        }
+        zone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const count = e.dataTransfer && e.dataTransfer.items ? e.dataTransfer.items.length : 0;
+            previewEl.textContent = count ? `${count} file${count > 1 ? 's' : ''}` : 'Drop files';
+        });
+        zone.addEventListener('dragleave', () => { previewEl.textContent = ''; });
+        zone.addEventListener('drop', () => { previewEl.textContent = ''; });
+    }
+    setupDropPreview('simRefDropZone', 'fileInputRef');
+    setupDropPreview('simTestDropZone', 'fileInputTest');
+    setupDropPreview('obsDropZone', 'obsFileInput');
+
+    // ── Collapse aria-expanded ──
+    document.querySelectorAll('[onclick*="toggleSection"]').forEach(btn => {
+        const bodyId = btn.getAttribute('onclick').match(/toggleSection\('([^']+)'/);
+        if (bodyId && bodyId[1]) {
+            const body = document.getElementById(bodyId[1]);
+            const isCollapsed = body && body.classList.contains('collapsed');
+            btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+            btn.setAttribute('aria-controls', bodyId[1]);
+        }
+    });
+    const origToggleSection = window.toggleSection;
+    if (typeof origToggleSection === 'function') {
+        window.toggleSection = function(bodyId, btnEl) {
+            origToggleSection(bodyId, btnEl);
+            const body = document.getElementById(bodyId);
+            if (body && btnEl) {
+                btnEl.setAttribute('aria-expanded', body.classList.contains('collapsed') ? 'false' : 'true');
+            }
+        };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ── Global Sensitivity Analysis (GSA)
+    // ══════════════════════════════════════════════════════════════════════
+
+    const gsaOutputSelect = document.getElementById('gsaOutputSelect');
+    const gsaContent = document.getElementById('gsaContent');
+    const gsaEmptyMsg = document.getElementById('gsaEmptyMsg');
+    const gsaSummaryBar = document.getElementById('gsaSummaryBar');
+    const gsaTornadoPlot = document.getElementById('gsaTornadoPlot');
+    const gsaScatterPlot = document.getElementById('gsaScatterPlot');
+    const gsaTableBody = document.getElementById('gsaTableBody');
+    const btnRunGSA = document.getElementById('btnRunGSA');
+
+    const GSA_OUTPUT_PARAMS = ['Cmax', 'AUCt', 'AUCinf', 'F', 'Tmax', 'Fa', 'Fdp'];
+
+    function isGSAOutputParam(key) {
+        const canonical = canonicalParamNameFromKey(key);
+        return canonical && GSA_OUTPUT_PARAMS.includes(canonical);
+    }
+
+    function poolSubjectData() {
+        if (!globalTrialsData || !Array.isArray(globalTrialsData.trials)) return null;
+        const allRows = [];
+        const allKeys = new Set();
+
+        globalTrialsData.trials.forEach(trial => {
+            if (!trial.active || !trial.rawParams || trial.rawParams.length === 0) return;
+            const keys = Object.keys(trial.rawParams[0]);
+            keys.forEach(k => { if (k) allKeys.add(k); });
+            trial.rawParams.forEach(row => allRows.push(row));
+        });
+
+        if (allRows.length < 5) return null;
+
+        const keyArray = Array.from(allKeys).filter(k => !isLikelyMetadataParam(k));
+
+        const inputKeys = [];
+        const outputKeys = [];
+        keyArray.forEach(k => {
+            const hasNumeric = allRows.some(row => Number.isFinite(parseNumericCell(row[k])));
+            if (!hasNumeric) return;
+            if (isGSAOutputParam(k)) outputKeys.push(k);
+            else inputKeys.push(k);
+        });
+
+        return { allRows, inputKeys, outputKeys };
+    }
+
+    function rankArray(arr) {
+        const indexed = arr.map((v, i) => ({ v, i }));
+        indexed.sort((a, b) => a.v - b.v);
+        const ranks = new Array(arr.length);
+        let i = 0;
+        while (i < indexed.length) {
+            let j = i;
+            while (j < indexed.length && indexed[j].v === indexed[i].v) j++;
+            const avgRank = (i + j + 1) / 2;
+            for (let k = i; k < j; k++) ranks[indexed[k].i] = avgRank;
+            i = j;
+        }
+        return ranks;
+    }
+
+    function spearmanCorrelation(x, y) {
+        const n = x.length;
+        if (n < 5) return { rho: 0, pValue: 1, n: 0 };
+        const rx = rankArray(x);
+        const ry = rankArray(y);
+        let sumDsq = 0;
+        for (let i = 0; i < n; i++) sumDsq += Math.pow(rx[i] - ry[i], 2);
+        const rho = 1 - (6 * sumDsq) / (n * (n * n - 1));
+
+        let pValue = 1;
+        if (n > 4 && Math.abs(rho) < 1) {
+            const t = rho * Math.sqrt((n - 2) / (1 - rho * rho));
+            const df = n - 2;
+            pValue = approxTwoTailP(t, df);
+        } else if (Math.abs(rho) >= 1) {
+            pValue = 0;
+        }
+
+        return { rho, pValue, n };
+    }
+
+    function approxTwoTailP(t, df) {
+        const x = df / (df + t * t);
+        const a = df / 2;
+        const b = 0.5;
+        const beta = incompleteBetaApprox(x, a, b);
+        return Math.min(1, Math.max(0, beta));
+    }
+
+    function incompleteBetaApprox(x, a, b) {
+        if (x <= 0) return 0;
+        if (x >= 1) return 1;
+        const lnBeta = lgamma(a) + lgamma(b) - lgamma(a + b);
+        const front = Math.exp(Math.log(x) * a + Math.log(1 - x) * b - lnBeta);
+        if (x < (a + 1) / (a + b + 2)) {
+            return front * cfBeta(x, a, b) / a;
+        }
+        return 1 - front * cfBeta(1 - x, b, a) / b;
+    }
+
+    function cfBeta(x, a, b) {
+        const maxIter = 200;
+        const eps = 1e-10;
+        let qab = a + b, qap = a + 1, qam = a - 1;
+        let c = 1, d = 1 - qab * x / qap;
+        if (Math.abs(d) < 1e-30) d = 1e-30;
+        d = 1 / d;
+        let h = d;
+        for (let m = 1; m <= maxIter; m++) {
+            const m2 = 2 * m;
+            let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+            d = 1 + aa * d; if (Math.abs(d) < 1e-30) d = 1e-30; d = 1 / d;
+            c = 1 + aa / c; if (Math.abs(c) < 1e-30) c = 1e-30;
+            h *= d * c;
+            aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+            d = 1 + aa * d; if (Math.abs(d) < 1e-30) d = 1e-30; d = 1 / d;
+            c = 1 + aa / c; if (Math.abs(c) < 1e-30) c = 1e-30;
+            const del = d * c;
+            h *= del;
+            if (Math.abs(del - 1) < eps) break;
+        }
+        return h;
+    }
+
+    function lgamma(x) {
+        const g = 7;
+        const c = [0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+        if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+        x -= 1;
+        let a = c[0];
+        for (let i = 1; i < g + 2; i++) a += c[i] / (x + i);
+        const t = x + g + 0.5;
+        return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+    }
+
+    function computeGSA(outputParamName) {
+        const pooled = poolSubjectData();
+        if (!pooled) return null;
+
+        const { allRows, inputKeys, outputKeys } = pooled;
+        const outputKey = findParamKey(outputKeys, outputParamName);
+        if (!outputKey) return { results: [], reason: `Output parameter "${outputParamName}" not found in any active trial data.`, n: 0, inputCount: 0 };
+
+        const outputVals = [];
+        const validIndices = [];
+        allRows.forEach((row, i) => {
+            const v = parseNumericCell(row[outputKey]);
+            if (Number.isFinite(v)) { outputVals.push(v); validIndices.push(i); }
+        });
+
+        if (outputVals.length < 5) return { results: [], reason: `Not enough valid data points for "${outputParamName}" (need at least 5, found ${outputVals.length}).`, n: outputVals.length, inputCount: 0 };
+
+        const results = [];
+        inputKeys.forEach(inputKey => {
+            const inputVals = [];
+            const pairedOutput = [];
+            validIndices.forEach((ri, pi) => {
+                const iv = parseNumericCell(allRows[ri][inputKey]);
+                if (Number.isFinite(iv)) {
+                    inputVals.push(iv);
+                    pairedOutput.push(outputVals[pi]);
+                }
+            });
+
+            if (inputVals.length < 5) return;
+            const allSame = inputVals.every(v => v === inputVals[0]);
+            if (allSame) return;
+
+            const { rho, pValue, n } = spearmanCorrelation(inputVals, pairedOutput);
+            const label = prettifyParamLabel(inputKey);
+            results.push({ inputKey, label, rho, absRho: Math.abs(rho), pValue, n });
+        });
+
+        results.sort((a, b) => b.absRho - a.absRho);
+
+        return {
+            results,
+            outputKey,
+            outputLabel: outputParamName,
+            n: outputVals.length,
+            inputCount: results.length,
+            allRows,
+            validIndices,
+            outputVals,
+            reason: null
+        };
+    }
+
+    function renderGSA(data) {
+        if (!gsaContent || !gsaEmptyMsg || !gsaTornadoPlot || !gsaScatterPlot || !gsaTableBody || !gsaSummaryBar) return;
+
+        if (!data || !data.results || data.results.length === 0) {
+            gsaContent.classList.add('hidden');
+            gsaEmptyMsg.classList.remove('hidden');
+            const msg = gsaEmptyMsg.querySelector('p');
+            if (msg) msg.textContent = (data && data.reason) || 'No input parameters with sufficient variation found. Upload files with subject-level parameter columns.';
+            return;
+        }
+
+        gsaContent.classList.remove('hidden');
+        gsaEmptyMsg.classList.add('hidden');
+
+        gsaSummaryBar.textContent = `Output: ${data.outputLabel} • Pooled subjects: ${data.n} • Input parameters analyzed: ${data.inputCount} • Significant (p<0.05): ${data.results.filter(r => r.pValue < 0.05).length}`;
+
+        const topN = data.results.slice(0, 20);
+
+        gsaTableBody.innerHTML = topN.map(r => {
+            const sigLevel = r.pValue < 0.001 ? '★★★' : r.pValue < 0.01 ? '★★' : r.pValue < 0.05 ? '★' : '—';
+            const sigColor = r.pValue < 0.05 ? '#4ade80' : 'var(--text-tertiary)';
+            const rhoColor = r.rho > 0 ? '#4ade80' : r.rho < 0 ? '#f87171' : 'var(--text-secondary)';
+            return `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td class="px-4 py-2 text-sm font-semibold" style="color:var(--text-primary)">${escapeHtml(r.label)}</td>
+                <td class="px-4 py-2 text-sm text-right" style="color:${rhoColor};font-weight:600;font-variant-numeric:tabular-nums">${r.rho.toFixed(3)}</td>
+                <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${r.absRho.toFixed(3)}</td>
+                <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${r.pValue < 0.001 ? '<0.001' : r.pValue.toFixed(3)}</td>
+                <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${r.n}</td>
+                <td class="px-4 py-2 text-center text-sm font-bold" style="color:${sigColor}">${sigLevel}</td>
+            </tr>`;
+        }).join('');
+
+        const plotTheme = getPlotTheme();
+
+        const tornadoRows = topN.slice(0, 15).reverse();
+        const tornadoTrace = {
+            type: 'bar',
+            orientation: 'h',
+            y: tornadoRows.map(r => r.label),
+            x: tornadoRows.map(r => r.rho),
+            marker: {
+                color: tornadoRows.map(r => r.rho >= 0 ? '#22c55e' : '#ef4444'),
+                line: { color: 'rgba(255,255,255,0.2)', width: 1 }
+            },
+            customdata: tornadoRows.map(r => [r.pValue < 0.001 ? '<0.001' : r.pValue.toFixed(3), r.n]),
+            hovertemplate: '%{y}<br>ρ = %{x:.3f}<br>p-value: %{customdata[0]}<br>n: %{customdata[1]}<extra></extra>'
+        };
+
+        const maxAbs = tornadoRows.reduce((m, r) => Math.max(m, Math.abs(r.rho)), 0);
+        const bound = Math.min(1, Math.max(0.2, maxAbs * 1.2));
+
+        const tornadoLayout = {
+            height: Math.max(340, tornadoRows.length * 26 + 80),
+            margin: { t: 10, r: 30, b: 50, l: 160 },
+            plot_bgcolor: plotTheme.bg, paper_bgcolor: plotTheme.paper,
+            font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', color: plotTheme.font, size: 11 },
+            xaxis: {
+                title: { text: `Spearman ρ vs ${data.outputLabel}`, font: { size: 11, color: plotTheme.subtitle } },
+                range: [-bound, bound],
+                gridcolor: plotTheme.grid,
+                zerolinecolor: plotTheme.axisline,
+                zerolinewidth: 2,
+                showline: true, linecolor: plotTheme.axisline, tickfont: { color: plotTheme.font }
+            },
+            yaxis: {
+                automargin: true,
+                tickfont: { size: 10, color: plotTheme.font }
+            },
+            showlegend: false
+        };
+
+        Plotly.react('gsaTornadoPlot', [tornadoTrace], tornadoLayout, { responsive: true, displaylogo: false });
+
+        if (topN.length > 0 && data.allRows && data.validIndices && data.outputVals) {
+            const topInput = topN[0];
+            const scatterX = [];
+            const scatterY = [];
+            data.validIndices.forEach((ri, pi) => {
+                const iv = parseNumericCell(data.allRows[ri][topInput.inputKey]);
+                if (Number.isFinite(iv)) {
+                    scatterX.push(iv);
+                    scatterY.push(data.outputVals[pi]);
+                }
+            });
+
+            const scatterTrace = {
+                type: 'scatter',
+                mode: 'markers',
+                x: scatterX,
+                y: scatterY,
+                marker: {
+                    size: 5,
+                    color: '#d4956a',
+                    opacity: Math.max(0.15, Math.min(0.6, 50 / scatterX.length)),
+                    line: { width: 0 }
+                },
+                hovertemplate: `${topInput.label}: %{x:.4g}<br>${data.outputLabel}: %{y:.4g}<extra></extra>`
+            };
+
+            const scatterLayout = {
+                height: 340,
+                margin: { t: 10, r: 20, b: 50, l: 70 },
+                plot_bgcolor: plotTheme.bg, paper_bgcolor: plotTheme.paper,
+                font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', color: plotTheme.font },
+                xaxis: {
+                    title: { text: topInput.label, font: { size: 11, color: plotTheme.subtitle } },
+                    gridcolor: plotTheme.grid,
+                    showline: true, linecolor: plotTheme.axisline, tickfont: { color: plotTheme.font }
+                },
+                yaxis: {
+                    title: { text: data.outputLabel, font: { size: 11, color: plotTheme.subtitle } },
+                    gridcolor: plotTheme.grid,
+                    showline: true, linecolor: plotTheme.axisline, tickfont: { color: plotTheme.font }
+                },
+                showlegend: false,
+                annotations: [{
+                    text: `ρ = ${topInput.rho.toFixed(3)}, p ${topInput.pValue < 0.001 ? '< 0.001' : '= ' + topInput.pValue.toFixed(3)}`,
+                    xref: 'paper', yref: 'paper', x: 0.98, y: 0.98,
+                    showarrow: false,
+                    font: { size: 11, color: plotTheme.font },
+                    bgcolor: plotTheme.paper,
+                    bordercolor: plotTheme.axisline,
+                    borderwidth: 1, borderpad: 4
+                }]
+            };
+
+            Plotly.react('gsaScatterPlot', [scatterTrace], scatterLayout, { responsive: true, displaylogo: false });
+        }
+    }
+
+    function updateGlobalSAView() {
+        if (!gsaContent || !gsaEmptyMsg) return;
+        const hasData = globalTrialsData && globalTrialsData.trials.some(t => t.active && t.rawParams && t.rawParams.length > 0);
+        if (!hasData) {
+            gsaContent.classList.add('hidden');
+            gsaEmptyMsg.classList.remove('hidden');
+            const msg = gsaEmptyMsg.querySelector('p');
+            if (msg) msg.textContent = 'Upload simulation files with subject-level parameters, then click "Run Analysis" to compute global sensitivity.';
+        }
+    }
+
+    function runGSA() {
+        const outputParam = gsaOutputSelect ? gsaOutputSelect.value : 'Cmax';
+        const data = computeGSA(outputParam);
+        renderGSA(data);
+    }
+
+    if (btnRunGSA) {
+        btnRunGSA.addEventListener('click', runGSA);
+    }
+    if (gsaOutputSelect) {
+        gsaOutputSelect.addEventListener('change', runGSA);
     }

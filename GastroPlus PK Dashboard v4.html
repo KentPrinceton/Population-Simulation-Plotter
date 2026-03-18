@@ -47,28 +47,39 @@
         <!-- Divider -->
         <div class="w-px h-5 mx-1 flex-shrink-0 hidden sm:block" style="background: var(--border-default);"></div>
         <!-- Reset Button -->
-        <button id="btnReset" class="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md flex-shrink-0" style="color: var(--text-tertiary); background: transparent; border: 1px solid transparent;" onmouseover="this.style.color='#f87171';this.style.borderColor='rgba(248,113,113,0.2)';this.style.background='rgba(248,113,113,0.06)';" onmouseout="this.style.color='var(--text-tertiary)';this.style.borderColor='transparent';this.style.background='transparent';">
+        <button id="btnReset" class="btn-reset-hover flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md flex-shrink-0" aria-label="Reset all data and settings">
             <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
             Reset
         </button>
     </div>
-    <div class="flex items-center gap-2 flex-wrap justify-end">
-        <button id="btnThemeToggle" class="flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md focus:outline-none" style="min-width: 112px; color: var(--text-secondary); background: var(--bg-raised); border: 1px solid var(--border-default);">
+    <div class="flex items-center gap-2 flex-wrap justify-end header-export-group">
+        <button id="btnThemeToggle" class="flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md" style="min-width: 112px; color: var(--text-secondary); background: var(--bg-raised); border: 1px solid var(--border-default);" aria-label="Toggle light/dark theme">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="m4.22 4.22 1.42 1.42"/><path d="m18.36 18.36 1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="m4.22 19.78 1.42-1.42"/><path d="m18.36 5.64 1.42-1.42"/></svg>
             <span id="txtThemeToggle">Light</span>
         </button>
-        <button id="btnExportBundle" disabled class="flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed" style="min-width: 150px; color: var(--text-secondary); background: transparent; border: 1px solid var(--border-default);">
+        <button id="btnExportBundle" disabled class="header-export-individual flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md disabled:opacity-30 disabled:cursor-not-allowed" style="min-width: 150px; color: var(--text-secondary); background: transparent; border: 1px solid var(--border-default);">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-2-2h-3V4a2 2 0 0 0-2-2H10a2 2 0 0 0-2 2v2H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2Z"/><path d="M8 10h8"/><path d="M8 14h8"/><path d="M10 6h4"/></svg>
             <span id="txtExportBundle">Export Bundle</span>
         </button>
-        <button id="btnExportCSV" disabled class="flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed" style="min-width: 152px; color: var(--text-secondary); background: var(--bg-raised); border: 1px solid var(--border-default);">
+        <button id="btnExportCSV" disabled class="header-export-individual flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md disabled:opacity-30 disabled:cursor-not-allowed" style="min-width: 152px; color: var(--text-secondary); background: var(--bg-raised); border: 1px solid var(--border-default);">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
             <span id="txtExportCSV">Export Data</span>
         </button>
-        <button id="btnExportPNG" disabled class="flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed" style="min-width: 140px; color: var(--accent-contrast); background: var(--accent); border: 1px solid var(--accent);">
+        <button id="btnExportPNG" disabled class="header-export-individual flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md disabled:opacity-30 disabled:cursor-not-allowed" style="min-width: 140px; color: var(--accent-contrast); background: var(--accent); border: 1px solid var(--accent);">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
             <span id="txtExportPNG">Download Plots</span>
         </button>
+        <div class="header-export-menu-btn relative">
+            <button id="btnExportMenu" class="flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md" style="color: var(--text-secondary); background: var(--bg-raised); border: 1px solid var(--border-default);" aria-label="Export options" aria-haspopup="true" aria-expanded="false">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                Export
+            </button>
+            <div id="exportDropdown" class="header-export-dropdown">
+                <button id="btnExportBundleMobile" disabled>Export Bundle (.zip)</button>
+                <button id="btnExportCSVMobile" disabled>Export Data (.csv)</button>
+                <button id="btnExportPNGMobile" disabled>Download Plots (.png)</button>
+            </div>
+        </div>
     </div>
 </header>
 
@@ -78,6 +89,9 @@
     <!-- Left Sidebar -->
     <aside class="w-full lg:w-[350px] h-[38vh] min-h-[260px] max-h-[440px] lg:h-auto lg:max-h-none lab-shell flex shrink-0 overflow-hidden" style="border-right: 1px solid var(--border-subtle);">
         <div class="icon-rail w-11 py-4 px-1.5 flex flex-col items-center gap-2">
+            <button id="btnSidebarToggle" class="sidebar-toggle-btn" title="Toggle sidebar" aria-label="Toggle sidebar">
+                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
             <button id="btnSidebarIngestion" class="rail-btn w-7 h-7 rounded-lg flex items-center justify-center active" title="Data Ingestion" aria-label="Go to Data Ingestion">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             </button>
@@ -199,9 +213,13 @@
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <p class="text-[10px]" style="color: var(--text-tertiary);">Set each trial as Test or Reference formulation for BE flow.</p>
                         <div class="flex items-center gap-1.5 whitespace-nowrap">
-                            <button id="btnSelectAll" class="text-[10px] font-semibold px-2 py-1 rounded-md transition-colors" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-default);" onmouseover="this.style.color='var(--accent)';this.style.borderColor='rgba(212,149,106,0.3)';" onmouseout="this.style.color='var(--text-secondary)';this.style.borderColor='var(--border-default)';">All</button>
-                            <button id="btnSelectNone" class="text-[10px] font-semibold px-2 py-1 rounded-md transition-colors" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-default);" onmouseover="this.style.color='var(--text-primary)';this.style.borderColor='var(--border-strong)';" onmouseout="this.style.color='var(--text-secondary)';this.style.borderColor='var(--border-default)';">None</button>
+                            <button id="btnSelectAll" class="btn-select-all text-[10px] font-semibold px-2 py-1 rounded-md transition-colors" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-default);">All</button>
+                            <button id="btnSelectNone" class="btn-select-none text-[10px] font-semibold px-2 py-1 rounded-md transition-colors" style="background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-default);">None</button>
                         </div>
+                    </div>
+                    <div class="trial-search-wrap">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        <input type="text" id="trialSearchInput" class="trial-search-input" placeholder="Filter trials..." aria-label="Filter trial list">
                     </div>
                     <div id="trialList" class="space-y-1.5 p-2.5 rounded-lg flex-1 min-h-[240px] overflow-y-auto custom-scrollbar" style="background: var(--bg-base); border: 1px solid var(--border-subtle);">
                         <!-- Trial controls injected here -->
@@ -236,26 +254,30 @@
         
         <!-- Tabs Navigation -->
         <div class="px-3 py-2 shrink-0 z-10 overflow-x-auto custom-scrollbar" style="background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle);">
-            <nav class="flex items-center space-x-1 min-w-max p-1 rounded-lg" style="background: var(--bg-base); border: 1px solid var(--border-subtle);" id="tabNav">
-                <button data-target="view-profile" class="tab-btn tab-active whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] focus:outline-none flex items-center gap-1.5">
+            <nav class="flex items-center space-x-1 min-w-max p-1 rounded-lg" style="background: var(--bg-base); border: 1px solid var(--border-subtle);" id="tabNav" role="tablist" aria-label="Dashboard views">
+                <button data-target="view-profile" role="tab" aria-selected="true" aria-controls="view-profile" class="tab-btn tab-active whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] flex items-center gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
                     Conc-Time
                 </button>
-                <button data-target="view-params" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] focus:outline-none flex items-center gap-1.5">
+                <button data-target="view-params" role="tab" aria-selected="false" aria-controls="view-params" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] flex items-center gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 3v18"/></svg>
                     PK Boxplots
                 </button>
-                <button data-target="view-be" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] focus:outline-none flex items-center gap-1.5">
+                <button data-target="view-be" role="tab" aria-selected="false" aria-controls="view-be" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] flex items-center gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     Bioequivalence
                 </button>
-                <button data-target="view-stats" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] focus:outline-none flex items-center gap-1.5">
+                <button data-target="view-stats" role="tab" aria-selected="false" aria-controls="view-stats" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] flex items-center gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                     Summary Stats
                 </button>
-                <button data-target="view-sensitivity" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] focus:outline-none flex items-center gap-1.5">
+                <button data-target="view-sensitivity" role="tab" aria-selected="false" aria-controls="view-sensitivity" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] flex items-center gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><polyline points="6 15 10 11 13 14 18 8"/><circle cx="10" cy="11" r="1"/><circle cx="13" cy="14" r="1"/><circle cx="18" cy="8" r="1"/></svg>
                     Sensitivity
+                </button>
+                <button data-target="view-global-sa" role="tab" aria-selected="false" aria-controls="view-global-sa" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                    Global SA
                 </button>
             </nav>
         </div>
@@ -308,7 +330,7 @@
         </div>
 
         <!-- View 1: Concentration-Time Profile -->
-        <div id="view-profile" class="flex-1 p-3 w-full h-full relative view-container flex flex-col gap-2 min-h-0">
+        <div id="view-profile" role="tabpanel" aria-labelledby="tab-view-profile" class="flex-1 p-3 w-full h-full relative view-container flex flex-col gap-2 min-h-0">
             <div class="shrink-0 rounded-lg px-3 py-2" style="border: 1px solid var(--border-subtle); background: var(--bg-surface);">
                 <div class="flex flex-wrap items-start gap-2">
                     <div class="pr-2 min-h-[28px] flex items-center" style="border-right: 1px solid var(--border-subtle);">
@@ -375,11 +397,16 @@
                 </div>
                 <div id="profileAxesBody" class="collapse-content collapsed">
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 mt-2">
-                        <input type="text" id="inputXTitle" placeholder="X-Axis Title" value="Time (h)" class="w-full">
-                        <input type="number" id="inputXMax" placeholder="X max" class="w-full" title="Force Max Time">
-                        <input type="text" id="inputYTitle" placeholder="Y-Axis Title" value="Concentration (ug/mL)" class="w-full">
-                        <input type="number" id="inputYMax" placeholder="Y max" class="w-full" title="Force Max Concentration">
-                        <select id="targetConcUnitSelect" class="w-full" title="Concentration unit — all trials normalised to this on next upload">
+                        <label for="inputXTitle" class="sr-only">X-Axis Title</label>
+                        <input type="text" id="inputXTitle" placeholder="X-Axis Title" value="Time (h)" class="w-full" aria-label="X-Axis Title">
+                        <label for="inputXMax" class="sr-only">X-Axis Max</label>
+                        <input type="number" id="inputXMax" placeholder="X max" class="w-full" title="Force Max Time" aria-label="X-Axis maximum value">
+                        <label for="inputYTitle" class="sr-only">Y-Axis Title</label>
+                        <input type="text" id="inputYTitle" placeholder="Y-Axis Title" value="Concentration (ug/mL)" class="w-full" aria-label="Y-Axis Title">
+                        <label for="inputYMax" class="sr-only">Y-Axis Max</label>
+                        <input type="number" id="inputYMax" placeholder="Y max" class="w-full" title="Force Max Concentration" aria-label="Y-Axis maximum value">
+                        <label for="targetConcUnitSelect" class="sr-only">Concentration Unit</label>
+                        <select id="targetConcUnitSelect" class="w-full" title="Concentration unit — all trials normalised to this on next upload" aria-label="Concentration unit">
                             <option value="">Unit: auto-detect</option>
                             <option value="ng/ml">ng/mL</option>
                             <option value="ug/ml" selected>µg/mL</option>
@@ -396,7 +423,7 @@
         </div>
 
         <!-- View 2: PK Parameter Boxplots -->
-        <div id="view-params" class="flex-1 p-3 w-full h-full overflow-y-auto view-container view-hidden relative flex flex-col gap-3 min-h-0" style="background: var(--bg-base);">
+        <div id="view-params" role="tabpanel" aria-labelledby="tab-view-params" class="flex-1 p-3 w-full h-full overflow-y-auto view-container view-hidden relative flex flex-col gap-3 min-h-0" style="background: var(--bg-base);">
             <div class="shrink-0 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3" style="border: 1px solid var(--border-subtle); background: var(--bg-surface);">
                 <div>
                     <h3 class="text-sm font-semibold" style="color: var(--text-primary);">PK Distribution Controls</h3>
@@ -451,19 +478,21 @@
         </div>
 
         <!-- View 3: Bioequivalence (BE) -->
-        <div id="view-be" class="flex-1 p-4 w-full h-full overflow-auto view-container view-hidden relative flex flex-col" style="background: var(--bg-base);">
+        <div id="view-be" role="tabpanel" aria-labelledby="tab-view-be" class="flex-1 p-4 w-full h-full overflow-auto view-container view-hidden relative flex flex-col" style="background: var(--bg-base);">
             <div class="p-3 rounded-lg mb-3 shrink-0 flex flex-wrap items-center gap-3" style="border: 1px solid var(--border-subtle); background: var(--bg-surface);">
                 <div>
                     <p class="text-[10px] uppercase tracking-widest font-bold" style="color: var(--text-tertiary);">Reference/Test Selector</p>
                     <p id="beRefSummary" class="text-sm font-semibold mt-0.5" style="color: var(--text-primary);">Select a Reference formulation trial for BE.</p>
                 </div>
-                <select id="beRefTrial" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 220px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);">
+                <label for="beRefTrial" class="sr-only">Reference Trial</label>
+                <select id="beRefTrial" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 220px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);" aria-label="Reference Trial">
                     <option value="">-- Select Reference Trial --</option>
                 </select>
-                <select id="beTestTrial" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 220px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);">
+                <label for="beTestTrial" class="sr-only">Test Trial</label>
+                <select id="beTestTrial" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 220px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);" aria-label="Test Trial">
                     <option value="">All Test Trials</option>
                 </select>
-                <label class="text-xs font-semibold ml-auto shrink-0" style="color: var(--text-secondary);">Method:</label>
+                <label for="beMethodSelect" class="text-xs font-semibold ml-auto shrink-0" style="color: var(--text-secondary);">Method:</label>
                 <select id="beMethodSelect" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none shrink-0" style="width: 280px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);">
                     <option value="simple">Simple Two-Group (Current)</option>
                     <option value="paired-trial-number">Matched Trial Number (Ref n vs Test n)</option>
@@ -532,7 +561,7 @@
         </div>
 
         <!-- View 5: Summary Statistics Table -->
-        <div id="view-stats" class="flex-1 p-4 w-full h-full overflow-auto view-container view-hidden" style="background: var(--bg-base);">
+        <div id="view-stats" role="tabpanel" aria-labelledby="tab-view-stats" class="flex-1 p-4 w-full h-full overflow-auto view-container view-hidden" style="background: var(--bg-base);">
             <div id="statsComparePanel" class="hidden mb-4 rounded-lg overflow-hidden" style="border: 1px solid var(--border-subtle);">
                 <div class="px-4 py-3 flex items-center justify-between" style="border-bottom: 1px solid var(--border-subtle); background: var(--bg-elevated);">
                     <div>
@@ -582,24 +611,18 @@
         </div>
 
         <!-- View 6: Sensitivity Analysis -->
-        <div id="view-sensitivity" class="flex-1 p-4 w-full h-full overflow-auto view-container view-hidden relative flex flex-col gap-3" style="background: var(--bg-base);">
+        <div id="view-sensitivity" role="tabpanel" aria-labelledby="tab-view-sensitivity" class="flex-1 p-4 w-full h-full overflow-auto view-container view-hidden relative flex flex-col gap-3" style="background: var(--bg-base);">
             <div class="p-3 rounded-lg shrink-0 flex flex-wrap items-center gap-3" style="border: 1px solid var(--border-subtle); background: var(--bg-surface);">
                 <div>
                     <p class="text-[10px] uppercase tracking-widest font-bold" style="color: var(--text-tertiary);">Cross-Trial Sensitivity</p>
                     <p class="text-sm font-semibold mt-0.5" style="color: var(--text-primary);">Endpoint change relative to a baseline trial.</p>
                 </div>
                 <div class="flex items-center gap-2 ml-auto flex-wrap">
-                    <label class="text-xs font-semibold" style="color: var(--text-secondary);">Endpoint:</label>
+                    <label for="sensitivityEndpointSelect" class="text-xs font-semibold" style="color: var(--text-secondary);">Endpoint:</label>
                     <select id="sensitivityEndpointSelect" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 140px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);">
                         <option value="Cmax">Cmax</option>
-                        <option value="AUCt">AUCt</option>
-                        <option value="AUCinf">AUCinf</option>
-                        <option value="Tmax">Tmax</option>
-                        <option value="Fa">Fa</option>
-                        <option value="Fdp">Fdp</option>
-                        <option value="F">F</option>
                     </select>
-                    <label class="text-xs font-semibold" style="color: var(--text-secondary);">Baseline:</label>
+                    <label for="sensitivityBaselineSelect" class="text-xs font-semibold" style="color: var(--text-secondary);">Baseline:</label>
                     <select id="sensitivityBaselineSelect" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 230px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);">
                         <option value="auto">Auto (first active Reference / first active trial)</option>
                     </select>
@@ -618,6 +641,7 @@
                                 <th class="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Trial</th>
                                 <th class="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Type</th>
                                 <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">Mean</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">CV%</th>
                                 <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">Δ vs Baseline (%)</th>
                                 <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">|Δ| (%)</th>
                             </tr>
@@ -634,11 +658,80 @@
             </div>
         </div>
 
+        <!-- View 7: Global Sensitivity Analysis -->
+        <div id="view-global-sa" role="tabpanel" aria-labelledby="tab-view-global-sa" class="flex-1 p-4 w-full h-full overflow-auto view-container view-hidden relative flex flex-col gap-3" style="background: var(--bg-base);">
+            <div class="p-3 rounded-lg shrink-0 flex flex-wrap items-center gap-3" style="border: 1px solid var(--border-subtle); background: var(--bg-surface);">
+                <div>
+                    <p class="text-[10px] uppercase tracking-widest font-bold" style="color: var(--text-tertiary);">Global Parameter Sensitivity</p>
+                    <p class="text-sm font-semibold mt-0.5" style="color: var(--text-primary);">How input parameters influence PK outcomes across all pooled subjects.</p>
+                </div>
+                <div class="flex items-center gap-2 ml-auto flex-wrap">
+                    <label for="gsaOutputSelect" class="text-xs font-semibold" style="color: var(--text-secondary);">Output:</label>
+                    <select id="gsaOutputSelect" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 140px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);" aria-label="Output PK parameter">
+                        <option value="Cmax">Cmax</option>
+                        <option value="AUCt">AUCt</option>
+                        <option value="AUCinf">AUCinf</option>
+                        <option value="F">F</option>
+                    </select>
+                    <button id="btnRunGSA" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shrink-0" style="color: var(--accent-contrast); background: var(--accent); border: 1px solid var(--accent);">
+                        Run Analysis
+                    </button>
+                </div>
+            </div>
+
+            <div id="gsaContent" class="hidden flex-1 flex flex-col gap-3 min-h-[520px]">
+                <div id="gsaSummaryBar" class="text-xs px-3 py-2 rounded-lg" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-secondary);"></div>
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                    <div class="rounded-lg p-2" style="background: var(--bg-surface); border: 1px solid var(--border-subtle);">
+                        <p class="text-[10px] uppercase tracking-widest font-bold px-1 pb-2" style="color: var(--text-tertiary);">Tornado Chart — Spearman Rank Correlation</p>
+                        <div id="gsaTornadoPlot" class="w-full" style="min-height: 340px;"></div>
+                    </div>
+                    <div class="rounded-lg p-2" style="background: var(--bg-surface); border: 1px solid var(--border-subtle);">
+                        <p class="text-[10px] uppercase tracking-widest font-bold px-1 pb-2" style="color: var(--text-tertiary);">Scatter — Top Correlated Input</p>
+                        <div id="gsaScatterPlot" class="w-full" style="min-height: 340px;"></div>
+                    </div>
+                </div>
+                <div class="rounded-lg overflow-auto table-wrap-sticky" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); max-height: 320px;">
+                    <table id="gsaTable" class="min-w-full divide-y table-zebra" style="border-color: var(--border-subtle);">
+                        <thead class="sticky top-0 z-10">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Input Parameter</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">Spearman ρ</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">|ρ|</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">p-value</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">n</th>
+                                <th class="px-4 py-2 text-center text-[10px] font-bold uppercase tracking-wider">Significance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gsaTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="gsaEmptyMsg" class="absolute inset-0 flex items-center justify-center pointer-events-none mt-20">
+                <div class="px-6 py-4 rounded-lg text-center" style="background: var(--bg-surface); border: 1px solid var(--border-default);">
+                    <p class="font-medium text-sm" style="color: var(--text-secondary);">Upload simulation files with subject-level parameters, then click "Run Analysis" to compute global sensitivity.</p>
+                </div>
+            </div>
+        </div>
+
     </main>
 
 </div>
 
-<div id="statusToast" class="status-toast" role="status" aria-live="polite"></div>
+<div id="statusToast" class="status-toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<!-- Reset Confirmation Dialog -->
+<div id="resetConfirmOverlay" class="reset-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="resetConfirmTitle">
+    <div class="reset-confirm-dialog">
+        <h3 id="resetConfirmTitle" class="text-sm font-semibold" style="color: var(--text-primary);">Reset Dashboard?</h3>
+        <p class="text-xs mt-2 leading-relaxed" style="color: var(--text-secondary);">This will clear all uploaded data, trial configurations, and analysis results. This cannot be undone.</p>
+        <div class="flex items-center justify-end gap-2 mt-4">
+            <button id="btnResetCancel" class="px-3 py-1.5 text-xs font-semibold rounded-md" style="color: var(--text-secondary); background: var(--bg-raised); border: 1px solid var(--border-default);">Cancel</button>
+            <button id="btnResetConfirm" class="px-3 py-1.5 text-xs font-semibold rounded-md" style="color: #fff; background: #dc2626; border: 1px solid #dc2626;">Reset Everything</button>
+        </div>
+    </div>
+</div>
 
 <script src="assets/js/dashboard/app.js"></script>
 
