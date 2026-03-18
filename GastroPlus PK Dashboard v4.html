@@ -275,6 +275,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><polyline points="6 15 10 11 13 14 18 8"/><circle cx="10" cy="11" r="1"/><circle cx="13" cy="14" r="1"/><circle cx="18" cy="8" r="1"/></svg>
                     Sensitivity
                 </button>
+                <button data-target="view-global-sa" role="tab" aria-selected="false" aria-controls="view-global-sa" class="tab-btn tab-inactive whitespace-nowrap py-1.5 px-3 font-semibold text-[11px] flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                    Global SA
+                </button>
             </nav>
         </div>
 
@@ -650,6 +654,63 @@
             <div id="sensitivityEmptyMsg" class="absolute inset-0 flex items-center justify-center pointer-events-none mt-20">
                 <div class="px-6 py-4 rounded-lg text-center" style="background: var(--bg-surface); border: 1px solid var(--border-default);">
                     <p class="font-medium text-sm" style="color: var(--text-secondary);">Sensitivity analysis needs at least two active trials with valid endpoint values.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- View 7: Global Sensitivity Analysis -->
+        <div id="view-global-sa" role="tabpanel" aria-labelledby="tab-view-global-sa" class="flex-1 p-4 w-full h-full overflow-auto view-container view-hidden relative flex flex-col gap-3" style="background: var(--bg-base);">
+            <div class="p-3 rounded-lg shrink-0 flex flex-wrap items-center gap-3" style="border: 1px solid var(--border-subtle); background: var(--bg-surface);">
+                <div>
+                    <p class="text-[10px] uppercase tracking-widest font-bold" style="color: var(--text-tertiary);">Global Parameter Sensitivity</p>
+                    <p class="text-sm font-semibold mt-0.5" style="color: var(--text-primary);">How input parameters influence PK outcomes across all pooled subjects.</p>
+                </div>
+                <div class="flex items-center gap-2 ml-auto flex-wrap">
+                    <label for="gsaOutputSelect" class="text-xs font-semibold" style="color: var(--text-secondary);">Output:</label>
+                    <select id="gsaOutputSelect" class="px-3 py-1.5 text-sm rounded-lg cursor-pointer focus:outline-none" style="min-width: 140px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border-default);" aria-label="Output PK parameter">
+                        <option value="Cmax">Cmax</option>
+                        <option value="AUCt">AUCt</option>
+                        <option value="AUCinf">AUCinf</option>
+                        <option value="F">F</option>
+                    </select>
+                    <button id="btnRunGSA" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shrink-0" style="color: var(--accent-contrast); background: var(--accent); border: 1px solid var(--accent);">
+                        Run Analysis
+                    </button>
+                </div>
+            </div>
+
+            <div id="gsaContent" class="hidden flex-1 flex flex-col gap-3 min-h-[520px]">
+                <div id="gsaSummaryBar" class="text-xs px-3 py-2 rounded-lg" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-secondary);"></div>
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                    <div class="rounded-lg p-2" style="background: var(--bg-surface); border: 1px solid var(--border-subtle);">
+                        <p class="text-[10px] uppercase tracking-widest font-bold px-1 pb-2" style="color: var(--text-tertiary);">Tornado Chart — Spearman Rank Correlation</p>
+                        <div id="gsaTornadoPlot" class="w-full" style="min-height: 340px;"></div>
+                    </div>
+                    <div class="rounded-lg p-2" style="background: var(--bg-surface); border: 1px solid var(--border-subtle);">
+                        <p class="text-[10px] uppercase tracking-widest font-bold px-1 pb-2" style="color: var(--text-tertiary);">Scatter — Top Correlated Input</p>
+                        <div id="gsaScatterPlot" class="w-full" style="min-height: 340px;"></div>
+                    </div>
+                </div>
+                <div class="rounded-lg overflow-auto table-wrap-sticky" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); max-height: 320px;">
+                    <table id="gsaTable" class="min-w-full divide-y table-zebra" style="border-color: var(--border-subtle);">
+                        <thead class="sticky top-0 z-10">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Input Parameter</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">Spearman ρ</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">|ρ|</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">p-value</th>
+                                <th class="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider">n</th>
+                                <th class="px-4 py-2 text-center text-[10px] font-bold uppercase tracking-wider">Significance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gsaTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="gsaEmptyMsg" class="absolute inset-0 flex items-center justify-center pointer-events-none mt-20">
+                <div class="px-6 py-4 rounded-lg text-center" style="background: var(--bg-surface); border: 1px solid var(--border-default);">
+                    <p class="font-medium text-sm" style="color: var(--text-secondary);">Upload simulation files with subject-level parameters, then click "Run Analysis" to compute global sensitivity.</p>
                 </div>
             </div>
         </div>

@@ -367,6 +367,11 @@
             csvLabel: 'Export Sensitivity Data',
             canExportPNG: () => !!globalTrialsData,
             canExportCSV: () => !!globalTrialsData
+        },
+        'view-global-sa': {
+            csvLabel: 'Export GSA Data',
+            canExportPNG: () => !!globalTrialsData,
+            canExportCSV: () => !!globalTrialsData
         }
     };
 
@@ -1069,6 +1074,7 @@
             Plotly.purge('plotlyChart');
             ['bePlotCmax', 'bePlotAUCinf', 'bePlotAUCt', 'bePlotConclusion'].forEach(id => Plotly.purge(id));
             Plotly.purge('sensitivityPlot');
+            try { Plotly.purge('gsaTornadoPlot'); Plotly.purge('gsaScatterPlot'); } catch(e2) {}
             Array.from(document.querySelectorAll('[id^="plotlyBox_"]')).forEach(el => Plotly.purge(el.id));
         } catch(e) {}
 
@@ -1090,6 +1096,10 @@
         if (sensitivitySummary) sensitivitySummary.textContent = '';
         if (sensitivityPlot) sensitivityPlot.innerHTML = '';
         if (sensitivityEmptyMsg) sensitivityEmptyMsg.classList.remove('hidden');
+        if (gsaContent) gsaContent.classList.add('hidden');
+        if (gsaTableBody) gsaTableBody.innerHTML = '';
+        if (gsaSummaryBar) gsaSummaryBar.textContent = '';
+        if (gsaEmptyMsg) gsaEmptyMsg.classList.remove('hidden');
         setBoxPlotLoadingState(false);
 
         // 6. Restore Empty States
@@ -1275,6 +1285,11 @@
             if (sensPlot) {
                 Plotly.downloadImage(sensitivityPlotTarget.id, { format: 'png', width: 1200, height: 720, filename: `PopPK_${sensitivityPlotTarget.name}` });
             }
+        } else if (currentTab === 'view-global-sa') {
+            const gsaTornado = getRenderablePlotElement('gsaTornadoPlot');
+            const gsaScatter = getRenderablePlotElement('gsaScatterPlot');
+            if (gsaTornado) Plotly.downloadImage('gsaTornadoPlot', { format: 'png', width: 1200, height: 720, filename: 'PopPK_Global_SA_Tornado' });
+            if (gsaScatter) Plotly.downloadImage('gsaScatterPlot', { format: 'png', width: 1200, height: 720, filename: 'PopPK_Global_SA_Scatter' });
         }
     });
 
@@ -1289,6 +1304,8 @@
             exportBEDataToCSV();
         } else if (currentTab === 'view-sensitivity') {
             exportSensitivityToCSV();
+        } else if (currentTab === 'view-global-sa') {
+            exportGSAToCSV();
         } else {
             exportDataToCSV();
         }
@@ -1325,10 +1342,12 @@
                     const statsCSV = getStatsCSVContent();
                     const paramsCSV = getParamsCSVContent();
                     const sensitivityCSV = getSensitivityCSVContent();
+                    const gsaCSV = getGSACSVContent();
                     if (profileCSV) zip.file('GastroPlus_Aggregated_Profiles.csv', profileCSV);
                     if (statsCSV) zip.file('GastroPlus_Summary_Stats.csv', statsCSV);
                     if (paramsCSV) zip.file('GastroPlus_PK_Parameters.csv', paramsCSV);
                     if (sensitivityCSV) zip.file('GastroPlus_Sensitivity_Analysis.csv', sensitivityCSV);
+                    if (gsaCSV) zip.file('GastroPlus_Global_Sensitivity.csv', gsaCSV);
                 }
                 if (globalBEData.length > 0) {
                     const beCSV = getBECSVContent();
@@ -1430,6 +1449,7 @@
         if(currentTab === 'view-params') updateBoxPlots();
         if(currentTab === 'view-be') updateBEView();
         if(currentTab === 'view-sensitivity') updateSensitivityView();
+        if(currentTab === 'view-global-sa') updateGlobalSAView();
         updateStatsTable();
         updateRunStatBar();
     }
@@ -3930,6 +3950,32 @@
         downloadCSV(csvContent, filename);
     }
 
+    function getGSACSVContent() {
+        if (!globalTrialsData) return null;
+        const outputParam = gsaOutputSelect ? gsaOutputSelect.value : 'Cmax';
+        const data = computeGSA(outputParam);
+        if (!data || !data.results || data.results.length === 0) return null;
+
+        const header = ['Input_Parameter', 'Spearman_Rho', 'Abs_Rho', 'P_Value', 'N', 'Significant_0.05', 'Output_Parameter', 'Pooled_Subjects'];
+        const rows = data.results.map(r => [
+            r.label,
+            r.rho.toFixed(6),
+            r.absRho.toFixed(6),
+            r.pValue.toFixed(6),
+            r.n,
+            r.pValue < 0.05 ? 'Yes' : 'No',
+            data.outputLabel,
+            data.n
+        ]);
+        return `${buildExportMetadata('Global Sensitivity Analysis')}\n${toCSVRow(header)}\n${rows.map(toCSVRow).join('\n')}${rows.length ? '\n' : ''}`;
+    }
+
+    function exportGSAToCSV(filename = "GastroPlus_Global_Sensitivity.csv") {
+        const csvContent = getGSACSVContent();
+        if (!csvContent) { showStatusToast('Run the Global SA analysis first before exporting.', 'warn'); return; }
+        downloadCSV(csvContent, filename);
+    }
+
     function getProfileCSVContent() {
         if (!globalTrialsData) return null;
 
@@ -4037,8 +4083,8 @@
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-        const tabTargets = ['view-profile', 'view-params', 'view-be', 'view-stats', 'view-sensitivity'];
-        if (e.key >= '1' && e.key <= '5') {
+        const tabTargets = ['view-profile', 'view-params', 'view-be', 'view-stats', 'view-sensitivity', 'view-global-sa'];
+        if (e.key >= '1' && e.key <= '6') {
             e.preventDefault();
             activateTab(tabTargets[parseInt(e.key) - 1]);
             return;
@@ -4167,4 +4213,349 @@
                 btnEl.setAttribute('aria-expanded', body.classList.contains('collapsed') ? 'false' : 'true');
             }
         };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ── Global Sensitivity Analysis (GSA)
+    // ══════════════════════════════════════════════════════════════════════
+
+    const gsaOutputSelect = document.getElementById('gsaOutputSelect');
+    const gsaContent = document.getElementById('gsaContent');
+    const gsaEmptyMsg = document.getElementById('gsaEmptyMsg');
+    const gsaSummaryBar = document.getElementById('gsaSummaryBar');
+    const gsaTornadoPlot = document.getElementById('gsaTornadoPlot');
+    const gsaScatterPlot = document.getElementById('gsaScatterPlot');
+    const gsaTableBody = document.getElementById('gsaTableBody');
+    const btnRunGSA = document.getElementById('btnRunGSA');
+
+    const GSA_OUTPUT_PARAMS = ['Cmax', 'AUCt', 'AUCinf', 'F', 'Tmax', 'Fa', 'Fdp'];
+
+    function isGSAOutputParam(key) {
+        const canonical = canonicalParamNameFromKey(key);
+        return canonical && GSA_OUTPUT_PARAMS.includes(canonical);
+    }
+
+    function poolSubjectData() {
+        if (!globalTrialsData || !Array.isArray(globalTrialsData.trials)) return null;
+        const allRows = [];
+        const allKeys = new Set();
+
+        globalTrialsData.trials.forEach(trial => {
+            if (!trial.active || !trial.rawParams || trial.rawParams.length === 0) return;
+            const keys = Object.keys(trial.rawParams[0]);
+            keys.forEach(k => { if (k) allKeys.add(k); });
+            trial.rawParams.forEach(row => allRows.push(row));
+        });
+
+        if (allRows.length < 5) return null;
+
+        const keyArray = Array.from(allKeys).filter(k => !isLikelyMetadataParam(k));
+
+        const inputKeys = [];
+        const outputKeys = [];
+        keyArray.forEach(k => {
+            const hasNumeric = allRows.some(row => Number.isFinite(parseNumericCell(row[k])));
+            if (!hasNumeric) return;
+            if (isGSAOutputParam(k)) outputKeys.push(k);
+            else inputKeys.push(k);
+        });
+
+        return { allRows, inputKeys, outputKeys };
+    }
+
+    function rankArray(arr) {
+        const indexed = arr.map((v, i) => ({ v, i }));
+        indexed.sort((a, b) => a.v - b.v);
+        const ranks = new Array(arr.length);
+        let i = 0;
+        while (i < indexed.length) {
+            let j = i;
+            while (j < indexed.length && indexed[j].v === indexed[i].v) j++;
+            const avgRank = (i + j + 1) / 2;
+            for (let k = i; k < j; k++) ranks[indexed[k].i] = avgRank;
+            i = j;
+        }
+        return ranks;
+    }
+
+    function spearmanCorrelation(x, y) {
+        const n = x.length;
+        if (n < 5) return { rho: 0, pValue: 1, n: 0 };
+        const rx = rankArray(x);
+        const ry = rankArray(y);
+        let sumDsq = 0;
+        for (let i = 0; i < n; i++) sumDsq += Math.pow(rx[i] - ry[i], 2);
+        const rho = 1 - (6 * sumDsq) / (n * (n * n - 1));
+
+        let pValue = 1;
+        if (n > 4 && Math.abs(rho) < 1) {
+            const t = rho * Math.sqrt((n - 2) / (1 - rho * rho));
+            const df = n - 2;
+            pValue = approxTwoTailP(t, df);
+        } else if (Math.abs(rho) >= 1) {
+            pValue = 0;
+        }
+
+        return { rho, pValue, n };
+    }
+
+    function approxTwoTailP(t, df) {
+        const x = df / (df + t * t);
+        const a = df / 2;
+        const b = 0.5;
+        const beta = incompleteBetaApprox(x, a, b);
+        return Math.min(1, Math.max(0, beta));
+    }
+
+    function incompleteBetaApprox(x, a, b) {
+        if (x <= 0) return 0;
+        if (x >= 1) return 1;
+        const lnBeta = lgamma(a) + lgamma(b) - lgamma(a + b);
+        const front = Math.exp(Math.log(x) * a + Math.log(1 - x) * b - lnBeta);
+        if (x < (a + 1) / (a + b + 2)) {
+            return front * cfBeta(x, a, b) / a;
+        }
+        return 1 - front * cfBeta(1 - x, b, a) / b;
+    }
+
+    function cfBeta(x, a, b) {
+        const maxIter = 200;
+        const eps = 1e-10;
+        let qab = a + b, qap = a + 1, qam = a - 1;
+        let c = 1, d = 1 - qab * x / qap;
+        if (Math.abs(d) < 1e-30) d = 1e-30;
+        d = 1 / d;
+        let h = d;
+        for (let m = 1; m <= maxIter; m++) {
+            const m2 = 2 * m;
+            let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+            d = 1 + aa * d; if (Math.abs(d) < 1e-30) d = 1e-30; d = 1 / d;
+            c = 1 + aa / c; if (Math.abs(c) < 1e-30) c = 1e-30;
+            h *= d * c;
+            aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+            d = 1 + aa * d; if (Math.abs(d) < 1e-30) d = 1e-30; d = 1 / d;
+            c = 1 + aa / c; if (Math.abs(c) < 1e-30) c = 1e-30;
+            const del = d * c;
+            h *= del;
+            if (Math.abs(del - 1) < eps) break;
+        }
+        return h;
+    }
+
+    function lgamma(x) {
+        const g = 7;
+        const c = [0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+        if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+        x -= 1;
+        let a = c[0];
+        for (let i = 1; i < g + 2; i++) a += c[i] / (x + i);
+        const t = x + g + 0.5;
+        return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+    }
+
+    function computeGSA(outputParamName) {
+        const pooled = poolSubjectData();
+        if (!pooled) return null;
+
+        const { allRows, inputKeys, outputKeys } = pooled;
+        const outputKey = findParamKey(outputKeys, outputParamName);
+        if (!outputKey) return { results: [], reason: `Output parameter "${outputParamName}" not found in any active trial data.`, n: 0, inputCount: 0 };
+
+        const outputVals = [];
+        const validIndices = [];
+        allRows.forEach((row, i) => {
+            const v = parseNumericCell(row[outputKey]);
+            if (Number.isFinite(v)) { outputVals.push(v); validIndices.push(i); }
+        });
+
+        if (outputVals.length < 5) return { results: [], reason: `Not enough valid data points for "${outputParamName}" (need at least 5, found ${outputVals.length}).`, n: outputVals.length, inputCount: 0 };
+
+        const results = [];
+        inputKeys.forEach(inputKey => {
+            const inputVals = [];
+            const pairedOutput = [];
+            validIndices.forEach((ri, pi) => {
+                const iv = parseNumericCell(allRows[ri][inputKey]);
+                if (Number.isFinite(iv)) {
+                    inputVals.push(iv);
+                    pairedOutput.push(outputVals[pi]);
+                }
+            });
+
+            if (inputVals.length < 5) return;
+            const allSame = inputVals.every(v => v === inputVals[0]);
+            if (allSame) return;
+
+            const { rho, pValue, n } = spearmanCorrelation(inputVals, pairedOutput);
+            const label = prettifyParamLabel(inputKey);
+            results.push({ inputKey, label, rho, absRho: Math.abs(rho), pValue, n });
+        });
+
+        results.sort((a, b) => b.absRho - a.absRho);
+
+        return {
+            results,
+            outputKey,
+            outputLabel: outputParamName,
+            n: outputVals.length,
+            inputCount: results.length,
+            allRows,
+            validIndices,
+            outputVals,
+            reason: null
+        };
+    }
+
+    function renderGSA(data) {
+        if (!gsaContent || !gsaEmptyMsg || !gsaTornadoPlot || !gsaScatterPlot || !gsaTableBody || !gsaSummaryBar) return;
+
+        if (!data || !data.results || data.results.length === 0) {
+            gsaContent.classList.add('hidden');
+            gsaEmptyMsg.classList.remove('hidden');
+            const msg = gsaEmptyMsg.querySelector('p');
+            if (msg) msg.textContent = (data && data.reason) || 'No input parameters with sufficient variation found. Upload files with subject-level parameter columns.';
+            return;
+        }
+
+        gsaContent.classList.remove('hidden');
+        gsaEmptyMsg.classList.add('hidden');
+
+        gsaSummaryBar.textContent = `Output: ${data.outputLabel} • Pooled subjects: ${data.n} • Input parameters analyzed: ${data.inputCount} • Significant (p<0.05): ${data.results.filter(r => r.pValue < 0.05).length}`;
+
+        const topN = data.results.slice(0, 20);
+
+        gsaTableBody.innerHTML = topN.map(r => {
+            const sigLevel = r.pValue < 0.001 ? '★★★' : r.pValue < 0.01 ? '★★' : r.pValue < 0.05 ? '★' : '—';
+            const sigColor = r.pValue < 0.05 ? '#4ade80' : 'var(--text-tertiary)';
+            const rhoColor = r.rho > 0 ? '#4ade80' : r.rho < 0 ? '#f87171' : 'var(--text-secondary)';
+            return `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td class="px-4 py-2 text-sm font-semibold" style="color:var(--text-primary)">${escapeHtml(r.label)}</td>
+                <td class="px-4 py-2 text-sm text-right" style="color:${rhoColor};font-weight:600;font-variant-numeric:tabular-nums">${r.rho.toFixed(3)}</td>
+                <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${r.absRho.toFixed(3)}</td>
+                <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${r.pValue < 0.001 ? '<0.001' : r.pValue.toFixed(3)}</td>
+                <td class="px-4 py-2 text-sm text-right" style="color:var(--text-secondary);font-variant-numeric:tabular-nums">${r.n}</td>
+                <td class="px-4 py-2 text-center text-sm font-bold" style="color:${sigColor}">${sigLevel}</td>
+            </tr>`;
+        }).join('');
+
+        const plotTheme = getPlotTheme();
+
+        const tornadoRows = topN.slice(0, 15).reverse();
+        const tornadoTrace = {
+            type: 'bar',
+            orientation: 'h',
+            y: tornadoRows.map(r => r.label),
+            x: tornadoRows.map(r => r.rho),
+            marker: {
+                color: tornadoRows.map(r => r.rho >= 0 ? '#22c55e' : '#ef4444'),
+                line: { color: 'rgba(255,255,255,0.2)', width: 1 }
+            },
+            customdata: tornadoRows.map(r => [r.pValue < 0.001 ? '<0.001' : r.pValue.toFixed(3), r.n]),
+            hovertemplate: '%{y}<br>ρ = %{x:.3f}<br>p-value: %{customdata[0]}<br>n: %{customdata[1]}<extra></extra>'
+        };
+
+        const maxAbs = tornadoRows.reduce((m, r) => Math.max(m, Math.abs(r.rho)), 0);
+        const bound = Math.min(1, Math.max(0.2, maxAbs * 1.2));
+
+        const tornadoLayout = {
+            height: Math.max(340, tornadoRows.length * 26 + 80),
+            margin: { t: 10, r: 30, b: 50, l: 160 },
+            plot_bgcolor: plotTheme.bg, paper_bgcolor: plotTheme.paper,
+            font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', color: plotTheme.font, size: 11 },
+            xaxis: {
+                title: { text: `Spearman ρ vs ${data.outputLabel}`, font: { size: 11, color: plotTheme.subtitle } },
+                range: [-bound, bound],
+                gridcolor: plotTheme.grid,
+                zerolinecolor: plotTheme.axisline,
+                zerolinewidth: 2,
+                showline: true, linecolor: plotTheme.axisline, tickfont: { color: plotTheme.font }
+            },
+            yaxis: {
+                automargin: true,
+                tickfont: { size: 10, color: plotTheme.font }
+            },
+            showlegend: false
+        };
+
+        Plotly.react('gsaTornadoPlot', [tornadoTrace], tornadoLayout, { responsive: true, displaylogo: false });
+
+        if (topN.length > 0 && data.allRows && data.validIndices && data.outputVals) {
+            const topInput = topN[0];
+            const scatterX = [];
+            const scatterY = [];
+            data.validIndices.forEach((ri, pi) => {
+                const iv = parseNumericCell(data.allRows[ri][topInput.inputKey]);
+                if (Number.isFinite(iv)) {
+                    scatterX.push(iv);
+                    scatterY.push(data.outputVals[pi]);
+                }
+            });
+
+            const scatterTrace = {
+                type: 'scatter',
+                mode: 'markers',
+                x: scatterX,
+                y: scatterY,
+                marker: {
+                    size: 5,
+                    color: '#d4956a',
+                    opacity: Math.max(0.15, Math.min(0.6, 50 / scatterX.length)),
+                    line: { width: 0 }
+                },
+                hovertemplate: `${topInput.label}: %{x:.4g}<br>${data.outputLabel}: %{y:.4g}<extra></extra>`
+            };
+
+            const scatterLayout = {
+                height: 340,
+                margin: { t: 10, r: 20, b: 50, l: 70 },
+                plot_bgcolor: plotTheme.bg, paper_bgcolor: plotTheme.paper,
+                font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', color: plotTheme.font },
+                xaxis: {
+                    title: { text: topInput.label, font: { size: 11, color: plotTheme.subtitle } },
+                    gridcolor: plotTheme.grid,
+                    showline: true, linecolor: plotTheme.axisline, tickfont: { color: plotTheme.font }
+                },
+                yaxis: {
+                    title: { text: data.outputLabel, font: { size: 11, color: plotTheme.subtitle } },
+                    gridcolor: plotTheme.grid,
+                    showline: true, linecolor: plotTheme.axisline, tickfont: { color: plotTheme.font }
+                },
+                showlegend: false,
+                annotations: [{
+                    text: `ρ = ${topInput.rho.toFixed(3)}, p ${topInput.pValue < 0.001 ? '< 0.001' : '= ' + topInput.pValue.toFixed(3)}`,
+                    xref: 'paper', yref: 'paper', x: 0.98, y: 0.98,
+                    showarrow: false,
+                    font: { size: 11, color: plotTheme.font },
+                    bgcolor: plotTheme.paper,
+                    bordercolor: plotTheme.axisline,
+                    borderwidth: 1, borderpad: 4
+                }]
+            };
+
+            Plotly.react('gsaScatterPlot', [scatterTrace], scatterLayout, { responsive: true, displaylogo: false });
+        }
+    }
+
+    function updateGlobalSAView() {
+        if (!gsaContent || !gsaEmptyMsg) return;
+        const hasData = globalTrialsData && globalTrialsData.trials.some(t => t.active && t.rawParams && t.rawParams.length > 0);
+        if (!hasData) {
+            gsaContent.classList.add('hidden');
+            gsaEmptyMsg.classList.remove('hidden');
+            const msg = gsaEmptyMsg.querySelector('p');
+            if (msg) msg.textContent = 'Upload simulation files with subject-level parameters, then click "Run Analysis" to compute global sensitivity.';
+        }
+    }
+
+    function runGSA() {
+        const outputParam = gsaOutputSelect ? gsaOutputSelect.value : 'Cmax';
+        const data = computeGSA(outputParam);
+        renderGSA(data);
+    }
+
+    if (btnRunGSA) {
+        btnRunGSA.addEventListener('click', runGSA);
+    }
+    if (gsaOutputSelect) {
+        gsaOutputSelect.addEventListener('change', runGSA);
     }
