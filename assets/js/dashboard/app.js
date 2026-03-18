@@ -20,12 +20,40 @@
     let boxPlotLoadingTimer = null;
     let boxPlotLoadingSeq = 0;
     let targetConcUnit = null; // canonical unit all trials are normalised to; set on first ingest
+    const APP_VERSION = 'v1.0.0';
+    const APP_VERSION_TAG = 'dev'; // for developer stamp
     const columnMappingDefaults = {
         simTimeContains: 'simtime',
         simSubjectPrefix: 'S-',
         obsTimeContains: 'time',
         obsConcContains: 'cp|conc|obs'
     };
+
+    // Stats worker setup
+    let statsWorker = null;
+    let statsWorkerReqId = 0;
+    const statsWorkerCallbacks = new Map();
+    try {
+        if (window.Worker) {
+            statsWorker = new Worker('assets/js/dashboard/plot-worker.js');
+            console.log('[app] statsWorker created');
+            statsWorker.onmessage = (e) => {
+                const msg = e.data;
+                console.log('[app] statsWorker onmessage', msg && msg.id, msg && msg.trialIndex);
+                const cb = statsWorkerCallbacks.get(msg.id);
+                if (cb) cb(msg);
+                statsWorkerCallbacks.delete(msg.id);
+            };
+        }
+    } catch (e) { console.warn('[app] statsWorker init failed', e); statsWorker = null; }
+
+    function updateVersionStamp() {
+        const label = APP_VERSION_TAG ? `${APP_VERSION} (${APP_VERSION_TAG})` : APP_VERSION;
+        const appEl = document.getElementById('appVersionStamp');
+        const homeEl = document.getElementById('homepageVersionStamp');
+        if (appEl) appEl.textContent = label;
+        if (homeEl) homeEl.textContent = label;
+    }
 
     // ── Concentration Unit Normalisation ──────────────────────────────────────
     // Factors: how many ug/mL equals 1 of this unit (i.e. multiply by this to get ug/mL)
@@ -305,6 +333,7 @@
     const btnProfileAxesToggle = document.getElementById('btnProfileAxesToggle');
     const statusToast = document.getElementById('statusToast');
     let statusToastTimer = null;
+    let loadingFallbackTimer = null;
 
     function showStatusToast(message, tone = 'info') {
         if (!statusToast || !message) return;
@@ -331,6 +360,7 @@
             btnBoxResultsOnly.style.color = 'var(--text-secondary)';
             btnBoxResultsOnly.style.borderColor = 'var(--border-default)';
         }
+        resetTrialStatsCache();
     }
 
     function addListener(el, eventName, handler) {
@@ -549,6 +579,28 @@
         if (tabBtn) tabBtn.click();
     }
 
+    // Make loading overlay dismissible in case something gets stuck
+    if (loadingOverlay) {
+        loadingOverlay.addEventListener('click', () => {
+            if (!loadingOverlay.classList.contains('hidden')) {
+                showStatusToast('Loading overlay dismissed; continuing.', 'warn');
+                showLoading(false);
+            }
+        });
+    }
+
+    window.addEventListener('unhandledrejection', (event) => {
+        console.error('Unhandled rejection:', event.reason);
+        showStatusToast('Unexpected error occurred; UI restored.', 'error');
+        showLoading(false);
+    });
+
+    window.addEventListener('error', (event) => {
+        console.error('Global error:', event.error || event.message);
+        showStatusToast('Application error occurred; UI restored.', 'error');
+        showLoading(false);
+    });
+
     if (btnSidebarAnalyze) {
         btnSidebarAnalyze.addEventListener('click', () => {
             const hasAnyData = !!globalTrialsData || globalObsData.length > 0;
@@ -576,6 +628,7 @@
     }
 
     loadSessionState();
+    updateVersionStamp();
     syncBoxResultsOnlyButton();
     updateFlowSetupState();
     applyExportControlsForView(currentTab);
@@ -950,32 +1003,79 @@
         saveSessionState();
     }
 
-    function computeTrialProfileStats(trial) {
+    function getPercentileFromSorted(sorted, p) {
+        if (!Array.isArray(sorted) || sorted.length === 0) return null;
+        const idx = (sorted.length - 1) * p;
+        const lower = Math.floor(idx);
+        const upper = Math.ceil(idx);
+        if (upper === lower) return sorted[lower];
+        const ratio = idx - lower;
+        return sorted[lower] + (sorted[upper] - sorted[lower]) * ratio;
+    }
+
+    function computeTrialProfileStats(trial, trialIndex) {
         if (!trial || !Array.isArray(trial.concsAtTime)) return;
+        if (trial._statsComputed || trial._statsComputing) return;
+
+        // Heuristic to decide whether to offload to worker
+        const totalCells = trial.concsAtTime.reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0);
+        const OFFLOAD_THRESHOLD = 6000;
+
+        if (statsWorker && totalCells > OFFLOAD_THRESHOLD) {
+            const id = ++statsWorkerReqId;
+            console.log('[app] offloading stats compute to worker', { id, trialIndex, totalCells });
+            trial._statsComputing = true;
+            statsWorkerCallbacks.set(id, (msg) => {
+                console.log('[app] statsWorker callback invoked', msg && msg.id, msg && msg.trialIndex);
+                if (msg && msg.stats) {
+                    trial.stats = msg.stats;
+                    trial._statsComputed = true;
+                    trial._statsComputing = false;
+                    if (currentTab === 'view-profile') updatePlot();
+                    else updateAllViews();
+                }
+            });
+            try {
+                statsWorker.postMessage({ id, action: 'computeStats', concsAtTime: trial.concsAtTime, trialIndex });
+            } catch (e) {
+                console.warn('[app] statsWorker postMessage failed', e);
+                statsWorkerCallbacks.delete(id);
+                trial._statsComputing = false;
+            }
+            return;
+        }
+
+        // Synchronous small-data fallback
         trial.stats = { means: [], medians: [], p00: [], p100: [], p025: [], p975: [], p05: [], p95: [], p25: [], p75: [], lowerCI: [], upperCI: [] };
-
         trial.concsAtTime.forEach(concs => {
-            if (concs.length > 0) {
-                const mean = concs.reduce((a, b) => a + b, 0) / concs.length;
+            if (concs && concs.length > 0) {
+                const vals = concs.filter(v => Number.isFinite(v));
+                if (vals.length === 0) { Object.keys(trial.stats).forEach(k => trial.stats[k].push(null)); return; }
+                const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+                const sorted = vals.slice().sort((a, b) => a - b);
                 trial.stats.means.push(mean);
-                trial.stats.medians.push(calculatePercentile(concs, 0.50));
-
-                trial.stats.p00.push(Math.min(...concs));
-                trial.stats.p100.push(Math.max(...concs));
-                trial.stats.p025.push(calculatePercentile(concs, 0.025));
-                trial.stats.p975.push(calculatePercentile(concs, 0.975));
-                trial.stats.p05.push(calculatePercentile(concs, 0.05));
-                trial.stats.p95.push(calculatePercentile(concs, 0.95));
-                trial.stats.p25.push(calculatePercentile(concs, 0.25));
-                trial.stats.p75.push(calculatePercentile(concs, 0.75));
-
-                const ci = calculateMeanAndCI(concs);
+                trial.stats.medians.push(getPercentileFromSorted(sorted, 0.50));
+                trial.stats.p00.push(sorted[0]);
+                trial.stats.p100.push(sorted[sorted.length - 1]);
+                trial.stats.p025.push(getPercentileFromSorted(sorted, 0.025));
+                trial.stats.p975.push(getPercentileFromSorted(sorted, 0.975));
+                trial.stats.p05.push(getPercentileFromSorted(sorted, 0.05));
+                trial.stats.p95.push(getPercentileFromSorted(sorted, 0.95));
+                trial.stats.p25.push(getPercentileFromSorted(sorted, 0.25));
+                trial.stats.p75.push(getPercentileFromSorted(sorted, 0.75));
+                const ci = calculateMeanAndCI(vals);
                 trial.stats.lowerCI.push(ci.lowerCI);
                 trial.stats.upperCI.push(ci.upperCI);
             } else {
                 Object.keys(trial.stats).forEach(k => trial.stats[k].push(null));
             }
         });
+        trial._statsComputed = true;
+    }
+
+    function resetTrialStatsCache() {
+        if (!globalTrialsData || !Array.isArray(globalTrialsData.trials)) return;
+        globalTrialsData.trials.forEach(t => { if (t) t._statsComputed = false; });
     }
     
     // Graceful reset without reloading the page
@@ -1196,12 +1296,14 @@
     addListener(btnScaleLinear, 'click', () => {
         isLogScale = false;
         setScaleButtonStyles(btnScaleLinear, btnScaleLog);
+        resetTrialStatsCache();
         triggerVisualUpdate();
     });
     
     addListener(btnScaleLog, 'click', () => {
         isLogScale = true;
         setScaleButtonStyles(btnScaleLog, btnScaleLinear);
+        resetTrialStatsCache();
         triggerVisualUpdate();
     });
 
@@ -1500,7 +1602,7 @@
             const simTimeNeedle = (mapping.simTimeContains || columnMappingDefaults.simTimeContains).toLowerCase();
             const simSubjectPrefix = (mapping.simSubjectPrefix || columnMappingDefaults.simSubjectPrefix).toLowerCase();
 
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     let cpText = "", statsText = null, paramsText = null;
                     let detectedSheetName = file.name; // fallback for CSV: use filename
@@ -1534,39 +1636,37 @@
                     if (headerLineIndex === -1) return reject(new Error(`No column matching '${mapping.simTimeContains || columnMappingDefaults.simTimeContains}' found in profile data.`));
                     
                     const cleanCpText = cpLines.slice(headerLineIndex).join('\n');
-                    Papa.parse(cleanCpText, {
-                        header: true, dynamicTyping: true, skipEmptyLines: 'greedy',
-                        complete: function(parsed) {
-                            const fieldNames = parsed.meta && Array.isArray(parsed.meta.fields) ? parsed.meta.fields : [];
-                            // Detect concentration unit from sheet name and headers
-                            result.concUnit = detectConcUnit(detectedSheetName, fieldNames);
-                            const timeField = fieldNames.find(f => String(f).toLowerCase().includes(simTimeNeedle));
-                            let subjectFields = fieldNames.filter(f => String(f).toLowerCase().startsWith(simSubjectPrefix));
-                            if (subjectFields.length === 0 && simSubjectPrefix !== 's-') {
-                                subjectFields = fieldNames.filter(f => String(f).match(/^S-\d+/i));
-                            }
-                            if (!timeField) { reject(new Error('SimTime column missing.')); return; }
-                            if (subjectFields.length === 0) { reject(new Error(`No subject columns found with prefix '${mapping.simSubjectPrefix || columnMappingDefaults.simSubjectPrefix}'.`)); return; }
-                            
-                            const times = [];
-                            const subjects = {};
-                            let nonPositiveCount = 0;
-                            subjectFields.forEach(sf => subjects[sf] = []);
-
-                            parsed.data.forEach(row => {
-                                const t = parseNumericCell(row[timeField]);
-                                if (!Number.isFinite(t)) return;
-                                times.push(t);
-                                subjectFields.forEach(sf => {
-                                    const rawVal = parseNumericCell(row[sf]);
-                                    if (Number.isFinite(rawVal) && rawVal <= 0) nonPositiveCount += 1;
-                                    subjects[sf].push(Number.isFinite(rawVal) ? rawVal : null);
-                                });
-                            });
-                            result.profile = { times, subjects };
-                            result.diagnostics.nonPositiveCount = nonPositiveCount;
+                    const parsedCp = await parseCsvAsync(cleanCpText);
+                    {
+                        const fieldNames = parsedCp.meta && Array.isArray(parsedCp.meta.fields) ? parsedCp.meta.fields : [];
+                        // Detect concentration unit from sheet name and headers
+                        result.concUnit = detectConcUnit(detectedSheetName, fieldNames);
+                        const timeField = fieldNames.find(f => String(f).toLowerCase().includes(simTimeNeedle));
+                        let subjectFields = fieldNames.filter(f => String(f).toLowerCase().startsWith(simSubjectPrefix));
+                        if (subjectFields.length === 0 && simSubjectPrefix !== 's-') {
+                            subjectFields = fieldNames.filter(f => String(f).match(/^S-\d+/i));
                         }
-                    });
+                        if (!timeField) { reject(new Error('SimTime column missing.')); return; }
+                        if (subjectFields.length === 0) { reject(new Error(`No subject columns found with prefix '${mapping.simSubjectPrefix || columnMappingDefaults.simSubjectPrefix}'.`)); return; }
+                        
+                        const times = [];
+                        const subjects = {};
+                        let nonPositiveCount = 0;
+                        subjectFields.forEach(sf => subjects[sf] = []);
+
+                        parsedCp.data.forEach(row => {
+                            const t = parseNumericCell(row[timeField]);
+                            if (!Number.isFinite(t)) return;
+                            times.push(t);
+                            subjectFields.forEach(sf => {
+                                const rawVal = parseNumericCell(row[sf]);
+                                if (Number.isFinite(rawVal) && rawVal <= 0) nonPositiveCount += 1;
+                                subjects[sf].push(Number.isFinite(rawVal) ? rawVal : null);
+                            });
+                        });
+                        result.profile = { times, subjects };
+                        result.diagnostics.nonPositiveCount = nonPositiveCount;
+                    }
 
                     // 2. Parse Summary Stats
                     if (statsText) {
@@ -1574,10 +1674,8 @@
                         let sHeaderIdx = statsLines.findIndex(l => l.toLowerCase().startsWith('endpoint'));
                         if (sHeaderIdx !== -1) {
                             const cleanStatsText = statsLines.slice(sHeaderIdx).join('\n');
-                            Papa.parse(cleanStatsText, {
-                                header: true, dynamicTyping: true, skipEmptyLines: 'greedy',
-                                complete: function(parsed) { result.stats = parsed.data; }
-                            });
+                            const parsedStats = await parseCsvAsync(cleanStatsText);
+                            result.stats = parsedStats.data || [];
                         }
                     }
 
@@ -1590,10 +1688,8 @@
                         });
                         if (pHeaderIdx !== -1) {
                             const cleanParamsText = paramsLines.slice(pHeaderIdx).join('\n');
-                            Papa.parse(cleanParamsText, {
-                                header: true, dynamicTyping: true, skipEmptyLines: 'greedy',
-                                complete: function(parsed) { result.paramSamples = parsed.data; }
-                            });
+                            const parsedParams = await parseCsvAsync(cleanParamsText);
+                            result.paramSamples = parsedParams.data || [];
                         }
                     }
 
@@ -1661,7 +1757,7 @@
             const mapping = getMappingConfig();
             const obsTimeNeedles = splitKeywords(mapping.obsTimeContains, columnMappingDefaults.obsTimeContains);
             const obsConcNeedles = splitKeywords(mapping.obsConcContains, columnMappingDefaults.obsConcContains);
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     let text;
                     if (ext === 'csv') {
@@ -1670,30 +1766,26 @@
                         const wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
                         text = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);
                     }
-                    Papa.parse(text, {
-                        header: true, dynamicTyping: true, skipEmptyLines: 'greedy',
-                        complete: function(results) {
-                            const fieldNames = results.meta.fields;
-                            if (!fieldNames || fieldNames.length < 2) return reject(new Error('Observed file has insufficient columns.'));
-                            let timeField = fieldNames.find(f => f && obsTimeNeedles.some(k => String(f).toLowerCase().includes(k))) || fieldNames[0];
-                            let concField = fieldNames.find(f => f && obsConcNeedles.some(k => String(f).toLowerCase().includes(k))) || fieldNames[1];
-                            const x = [], y = [];
-                            let nonPositiveCount = 0;
-                            results.data.forEach(row => {
-                                if (row[timeField] != null && row[concField] != null && row[timeField] !== '' && row[concField] !== '') {
-                                    const t = parseNumericCell(row[timeField]);
-                                    const c = parseNumericCell(row[concField]);
-                                    if (Number.isFinite(t) && Number.isFinite(c)) {
-                                        if (c <= 0) nonPositiveCount += 1;
-                                        x.push(t);
-                                        y.push(c);
-                                    }
-                                }
-                            });
-                            if (x.length === 0) return reject(new Error('No valid numeric rows found in observed file.'));
-                            resolve({ fileName: file.name, x, y, nonPositiveCount });
-                        }, error: reject
+                    const results = await parseCsvAsync(text);
+                    const fieldNames = results.meta.fields;
+                    if (!fieldNames || fieldNames.length < 2) return reject(new Error('Observed file has insufficient columns.'));
+                    let timeField = fieldNames.find(f => f && obsTimeNeedles.some(k => String(f).toLowerCase().includes(k))) || fieldNames[0];
+                    let concField = fieldNames.find(f => f && obsConcNeedles.some(k => String(f).toLowerCase().includes(k))) || fieldNames[1];
+                    const x = [], y = [];
+                    let nonPositiveCount = 0;
+                    (results.data || []).forEach(row => {
+                        if (row[timeField] != null && row[concField] != null && row[timeField] !== '' && row[concField] !== '') {
+                            const t = parseNumericCell(row[timeField]);
+                            const c = parseNumericCell(row[concField]);
+                            if (Number.isFinite(t) && Number.isFinite(c)) {
+                                if (c <= 0) nonPositiveCount += 1;
+                                x.push(t);
+                                y.push(c);
+                            }
+                        }
                     });
+                    if (x.length === 0) return reject(new Error('No valid numeric rows found in observed file.'));
+                    resolve({ fileName: file.name, x, y, nonPositiveCount });
                 } catch (err) { reject(err); }
             };
             reader.onerror = reject;
@@ -1806,7 +1898,8 @@
                 rawStats: rawStats,
                 rawParams: rawParams,
                 active: true,
-                stats: {}
+                stats: {},
+                _statsComputed: false
             };
         });
 
@@ -1814,6 +1907,11 @@
         totalSubjects = combinedTrials.reduce((sum, t) => sum + t.subjectCount, 0);
 
         globalTrialsData = { trials: combinedTrials, totalSubjects, totalTrials: combinedTrials.length };
+
+        // Ensure cached stats are recomputed for the combined set
+        if (globalTrialsData && Array.isArray(globalTrialsData.trials)) {
+            globalTrialsData.trials.forEach(t => { if (t) t._statsComputed = false; });
+        }
 
         const hasStoredRef = beReferenceIndex !== '' && combinedTrials[beReferenceIndex] && combinedTrials[beReferenceIndex].formulationType === 'reference';
         const refIdxExisting = combinedTrials.findIndex(t => t.formulationType === 'reference');
@@ -1923,10 +2021,9 @@
     }
 
     function updateBERefSelect() {
-        beRefTrialSelect.innerHTML = '<option value="">-- Select Reference Trial --</option>';
-        if (beTestTrialSelect) {
-            beTestTrialSelect.innerHTML = '<option value="">All Test Trials</option>';
-        }
+        if (!beRefTrialSelect && !beTestTrialSelect && !btnRunBE) return;
+        if (beRefTrialSelect) beRefTrialSelect.innerHTML = '<option value="">-- Select Reference Trial --</option>';
+        if (beTestTrialSelect) beTestTrialSelect.innerHTML = '<option value="">All Test Trials</option>';
 
         if (!globalTrialsData) {
             if (btnRunBE) {
@@ -2098,6 +2195,30 @@
         const s = String(label || '').trim();
         if (s.length <= maxLen) return s;
         return `${s.slice(0, Math.max(8, maxLen - 1)).trim()}…`;
+    }
+
+    function parseCsvAsync(text) {
+        return new Promise((resolve, reject) => {
+            const baseOpts = {
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: 'greedy'
+            };
+            const tryParse = (opts) => {
+                try {
+                    Papa.parse(text, Object.assign({}, baseOpts, opts, {
+                        complete: resolve,
+                        error: (err) => reject(new Error(err && err.message ? err.message : String(err)))
+                    }));
+                } catch (e) {
+                    reject(e);
+                }
+            };
+
+            // Prefer worker when available, but fall back to main thread if not.
+            const workerAvailable = (typeof Worker !== 'undefined');
+            tryParse({ worker: !!workerAvailable });
+        });
     }
 
     function parseNumericCell(val) {
@@ -2539,7 +2660,7 @@
                 const rgb = chartColors[index % chartColors.length].rgb;
                 
                 let displayName = getTrialLabel(trial);
-                computeTrialProfileStats(trial);
+                computeTrialProfileStats(trial, index);
 
                 const legendGroup = `group_${index}`;
 
@@ -3977,10 +4098,10 @@
     function getProfileCSVContent() {
         if (!globalTrialsData) return null;
 
-        globalTrialsData.trials.forEach(trial => {
+        globalTrialsData.trials.forEach((trial, i) => {
             if (!trial.active) return;
             const hasStats = trial.stats && Array.isArray(trial.stats.means) && trial.stats.means.length === trial.times.length;
-            if (!hasStats) computeTrialProfileStats(trial);
+            if (!hasStats) computeTrialProfileStats(trial, i);
         });
         
         const header = ['Trial_Number', 'Time', 'Mean', 'Median', 'Min', '2.5th_Percentile', '5th_Percentile', '25th_Percentile', '75th_Percentile', '95th_Percentile', '97.5th_Percentile', 'Max', 'Lower_90CI_Mean', 'Upper_90CI_Mean'];
@@ -4023,21 +4144,41 @@
     }
 
     function showLoading(isVisible) {
+        if (loadingFallbackTimer) {
+            window.clearTimeout(loadingFallbackTimer);
+            loadingFallbackTimer = null;
+        }
+
         if (isVisible) {
             if (loadingSpinner) loadingSpinner.classList.remove('hidden');
             if (loadingOverlay) {
                 loadingOverlay.classList.remove('hidden');
                 loadingOverlay.classList.add('flex');
+                loadingOverlay.style.pointerEvents = 'auto';
             }
             if (emptyState) emptyState.classList.add('hidden');
             document.body.classList.add('cursor-progress');
+
+            // Failsafe: in case a parse operation never resolves, auto-clear overlay after 30s
+            loadingFallbackTimer = window.setTimeout(() => {
+                if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) {
+                    showStatusToast('Operation timed out; UI restored. Please retry if needed.', 'warn');
+                    showLoading(false);
+                }
+            }, 30000);
         } else {
             if (loadingSpinner) loadingSpinner.classList.add('hidden');
             if (loadingOverlay) {
                 loadingOverlay.classList.add('hidden');
                 loadingOverlay.classList.remove('flex');
+                loadingOverlay.style.pointerEvents = 'none';
             }
             document.body.classList.remove('cursor-progress');
+
+            if (loadingFallbackTimer) {
+                window.clearTimeout(loadingFallbackTimer);
+                loadingFallbackTimer = null;
+            }
         }
     }
 
